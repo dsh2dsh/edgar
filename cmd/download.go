@@ -40,6 +40,7 @@ func NewDownload(client *client.Client, dataDir string) *Download {
 	return &Download{
 		client:  client,
 		datadir: dataDir,
+		storage: newDownloadDir(dataDir),
 	}
 }
 
@@ -60,7 +61,6 @@ func (self *Download) WithNeedFiles(needFiles []string) *Download {
 }
 
 func (self *Download) Download(path string) error {
-	self.storage = newDownloadDir(self.datadir)
 	return nil
 }
 
@@ -71,6 +71,8 @@ func (self *Download) NeedFile(fname string) bool {
 	_, ok := self.needFiles[fname]
 	return ok
 }
+
+// --------------------------------------------------
 
 func newDownloadDir(datadir string) *downloadDir {
 	return &downloadDir{datadir: datadir}
