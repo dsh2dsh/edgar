@@ -11,43 +11,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDownloadDir_NeedFile(t *testing.T) {
+func TestDownload_NeedFile(t *testing.T) {
 	tests := []struct {
 		name      string
 		needFiles []string
 		fname     string
-		expect    bool
+		found     bool
 	}{
 		{
-			name:      "nil needFiles",
-			needFiles: nil,
-			fname:     "foo",
-			expect:    true,
+			name:  "without needFiles",
+			fname: "foo",
+			found: true,
 		},
 		{
 			name:      "empty needFiles",
 			needFiles: []string{},
 			fname:     "foo",
-			expect:    true,
+			found:     true,
 		},
 		{
 			name:      "found",
 			needFiles: []string{"foo", "bar"},
 			fname:     "foo",
-			expect:    true,
+			found:     true,
 		},
 		{
-			name:      "found",
+			name:      "not found",
 			needFiles: []string{"foo", "bar"},
 			fname:     "baz",
-			expect:    false,
+			found:     false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := newDownloadDir("", tt.needFiles)
-			if tt.expect {
+			d := Download{}
+			if tt.needFiles != nil {
+				d.WithNeedFiles(tt.needFiles)
+			}
+			if tt.found {
 				assert.True(t, d.NeedFile(tt.fname))
 			} else {
 				assert.False(t, d.NeedFile(tt.fname))
@@ -61,7 +63,7 @@ func TestDownloadDir_Save(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(datadir) })
 
-	d := newDownloadDir(datadir, nil)
+	d := newDownloadDir(datadir)
 	buf := bytes.NewReader([]byte("foobar"))
 	require.NoError(t, d.Save("a/b/c", "foobar.txt", buf))
 
@@ -90,7 +92,7 @@ func TestDownloadDir_makePath(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(datadir) })
 
-	d := newDownloadDir(datadir, nil)
+	d := newDownloadDir(datadir)
 	require.NoError(t, d.makePath("a/b/c"))
 
 	fi, err := os.Stat(filepath.Join(datadir, "a/b/c"))

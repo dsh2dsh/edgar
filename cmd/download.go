@@ -24,7 +24,11 @@ var downloadCmd = cobra.Command{
 		if err != nil {
 			return err
 		}
-		return NewDownload(client, edgarDataDir).Download(args[0], args[1:])
+		d := NewDownload(client, edgarDataDir)
+		if len(args) > 1 {
+			d.WithNeedFiles(args[1:])
+		}
+		return d.Download(args[0])
 	},
 }
 
@@ -43,38 +47,37 @@ type Download struct {
 	client  *client.Client
 	datadir string
 
-	storage *downloadDir
+	needFiles map[string]struct{}
+	storage   *downloadDir
 }
 
-func (self *Download) Download(path string, needFiles []string) error {
-	self.storage = newDownloadDir(self.datadir, needFiles)
+func (self *Download) WithNeedFiles(needFiles []string) *Download {
+	self.needFiles = make(map[string]struct{}, len(needFiles))
+	for _, fname := range needFiles {
+		self.needFiles[fname] = struct{}{}
+	}
+	return self
+}
+
+func (self *Download) Download(path string) error {
+	self.storage = newDownloadDir(self.datadir)
 	return nil
 }
 
-func newDownloadDir(datadir string, needFiles []string) *downloadDir {
-	d := &downloadDir{
-		datadir:   datadir,
-		needFiles: make(map[string]struct{}, len(needFiles)),
-	}
-
-	for _, fname := range needFiles {
-		d.needFiles[fname] = struct{}{}
-	}
-
-	return d
-}
-
-type downloadDir struct {
-	datadir   string
-	needFiles map[string]struct{}
-}
-
-func (self *downloadDir) NeedFile(fname string) bool {
+func (self *Download) NeedFile(fname string) bool {
 	if len(self.needFiles) == 0 {
 		return true
 	}
 	_, ok := self.needFiles[fname]
 	return ok
+}
+
+func newDownloadDir(datadir string) *downloadDir {
+	return &downloadDir{datadir: datadir}
+}
+
+type downloadDir struct {
+	datadir string
 }
 
 func (self *downloadDir) Save(path, fname string, r io.Reader) error {
