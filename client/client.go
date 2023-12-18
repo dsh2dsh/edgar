@@ -121,8 +121,8 @@ func (self *Client) GetJSON(ctx context.Context, url string, value any) error {
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	if resp.StatusCode > 299 {
-		return fmt.Errorf("GET %s: %d (%s)", url, resp.StatusCode, string(body))
+	if resp.StatusCode > maxExpectedStatusCode {
+		return fmt.Errorf("GET %s: %w", url, newUnexpectedStatusError(resp))
 	}
 	if err != nil {
 		return fmt.Errorf("read body from GET %s: %w", url, err)

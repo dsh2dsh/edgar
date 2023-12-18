@@ -158,11 +158,12 @@ func TestClient_GetJSON(t *testing.T) {
 	testErr := errors.New("expected error")
 
 	tests := []struct {
-		name    string
-		json    string
-		mockDo  func(req *http.Request) (*http.Response, error)
-		wantErr bool
-		errorIs error
+		name        string
+		json        string
+		mockDo      func(req *http.Request) (*http.Response, error)
+		wantErr     bool
+		errorIs     error
+		assertError func(t *testing.T, err error)
 	}{
 		{
 			name: "default",
@@ -182,7 +183,12 @@ func TestClient_GetJSON(t *testing.T) {
 				recorder.WriteHeader(http.StatusNotFound)
 				return recorder.Result(), nil
 			},
-			wantErr: true,
+			assertError: func(t *testing.T, err error) {
+				require.ErrorIs(t, err, ErrUnexpectedStatus)
+				var statusErr *UnexpectedStatusError
+				require.ErrorAs(t, err, &statusErr)
+				assert.Equal(t, http.StatusNotFound, statusErr.StatusCode())
+			},
 		},
 		{
 			name:    "Unmarshal error",
@@ -224,6 +230,8 @@ func TestClient_GetJSON(t *testing.T) {
 			err := c.GetJSON(context.Background(), "https://localhost", &gotIndex)
 
 			switch {
+			case tt.assertError != nil:
+				tt.assertError(t, err)
 			case tt.errorIs != nil:
 				require.ErrorIs(t, err, tt.errorIs)
 			case tt.wantErr:
