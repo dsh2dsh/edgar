@@ -14,7 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"github.com/dsh2dsh/edgar/client/internal/mocks"
+	"github.com/dsh2dsh/edgar/internal/mocks/client"
+	mocksIo "github.com/dsh2dsh/edgar/internal/mocks/io"
 )
 
 func TestNew(t *testing.T) {
@@ -68,7 +69,7 @@ func TestClient_Get(t *testing.T) {
 		{
 			name: "WithRateLimit",
 			opts: func() (opts []ClientOption) {
-				limiter := mocks.NewMockLimiter(t)
+				limiter := client.NewMockLimiter(t)
 				limiter.EXPECT().Wait(mock.Anything).Return(nil)
 				opts = append(opts, WithRateLimiter(limiter))
 				return
@@ -84,7 +85,7 @@ func TestClient_Get(t *testing.T) {
 		{
 			name: "WithRateLimit error",
 			opts: func() (opts []ClientOption) {
-				limiter := mocks.NewMockLimiter(t)
+				limiter := client.NewMockLimiter(t)
 				limiter.EXPECT().Wait(mock.Anything).Return(testErr)
 				opts = append(opts, WithRateLimiter(limiter))
 				return
@@ -109,7 +110,7 @@ func TestClient_Get(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			httpClient := mocks.NewMockHttpRequestDoer(t)
+			httpClient := client.NewMockHttpRequestDoer(t)
 			opts := []ClientOption{WithHttpClient(httpClient)}
 			if tt.opts != nil {
 				opts = append(opts, tt.opts()...)
@@ -199,7 +200,7 @@ func TestClient_GetJSON(t *testing.T) {
 			name: "Read error",
 			mockDo: func(req *http.Request) (*http.Response, error) {
 				resp := httptest.NewRecorder().Result()
-				reader := mocks.NewMockReader(t)
+				reader := mocksIo.NewMockReader(t)
 				reader.EXPECT().Read(mock.Anything).Return(0, testErr)
 				resp.Body = io.NopCloser(reader)
 				return resp, nil
@@ -210,7 +211,7 @@ func TestClient_GetJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			httpClient := mocks.NewMockHttpRequestDoer(t)
+			httpClient := client.NewMockHttpRequestDoer(t)
 			if tt.mockDo != nil {
 				httpClient.EXPECT().Do(mock.Anything).RunAndReturn(tt.mockDo)
 			} else {
@@ -261,7 +262,7 @@ func TestClient_IndexArchive(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, jsonIndex)
 
-	httpClient := mocks.NewMockHttpRequestDoer(t)
+	httpClient := client.NewMockHttpRequestDoer(t)
 	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
 		func(req *http.Request) (*http.Response, error) {
 			recorder := httptest.NewRecorder()
@@ -283,7 +284,7 @@ func TestClient_IndexArchive(t *testing.T) {
 }
 
 func TestClient_GetArchiveFile_ok(t *testing.T) {
-	httpClient := mocks.NewMockHttpRequestDoer(t)
+	httpClient := client.NewMockHttpRequestDoer(t)
 	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
 		func(req *http.Request) (*http.Response, error) {
 			recorder := httptest.NewRecorder()
@@ -303,7 +304,7 @@ func TestClient_GetArchiveFile_ok(t *testing.T) {
 }
 
 func TestClient_GetArchiveFile_error(t *testing.T) {
-	httpClient := mocks.NewMockHttpRequestDoer(t)
+	httpClient := client.NewMockHttpRequestDoer(t)
 	c := testNew(t, WithHttpClient(httpClient)).WithArchivesBaseURL(":localhost")
 	_, err := c.GetArchiveFile(context.Background(), "")
 	require.Error(t, err)

@@ -1,14 +1,14 @@
-dir: "{{.InterfaceDir}}/internal/mocks"
+dir: "internal/mocks/{{.PackageName}}"
 disable-version-string: True
-outpkg: "mocks"
 with-expecter: True
 packages:
   io:
-    config:
-      dir: "client/internal/mocks"
     interfaces:
       Reader:
   github.com/dsh2dsh/edgar/client:
     interfaces:
       HttpRequestDoer:
       Limiter:
+  github.com/dsh2dsh/edgar/cmd:
+    interfaces:
+      Storage:
