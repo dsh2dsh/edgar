@@ -48,19 +48,24 @@ func init() {
 	rootCmd.AddCommand(&downloadCmd)
 }
 
-func NewDownload(client *client.Client, st *downloadDir) *Download {
+func NewDownload(client *client.Client, st Storage) *Download {
 	return &Download{
 		client:  client,
 		storage: st,
+		procs:   1,
 	}
 }
 
 type Download struct {
 	client  *client.Client
-	storage *downloadDir
+	storage Storage
 
 	needFiles map[string]struct{}
 	procs     int
+}
+
+type Storage interface {
+	Save(path, fname string, r io.Reader) error
 }
 
 func (self *Download) WithNeedFiles(needFiles []string) *Download {
@@ -150,7 +155,7 @@ func (self *Download) itemHandler(ctx context.Context, path string,
 	case "file":
 		h = func() error {
 			if self.NeedFile(item.Name) {
-				return self.processFile(ctx, path, item.Name, fullPath)
+				return self.downloadFile(ctx, path, item.Name, fullPath)
 			}
 			return nil
 		}
@@ -166,7 +171,7 @@ func (self *Download) NeedFile(fname string) bool {
 	return ok
 }
 
-func (self *Download) processFile(ctx context.Context, parentPath, fname,
+func (self *Download) downloadFile(ctx context.Context, parentPath, fname,
 	fullPath string,
 ) error {
 	resp, err := self.client.GetArchiveFile(ctx, fullPath)
@@ -174,8 +179,12 @@ func (self *Download) processFile(ctx context.Context, parentPath, fname,
 		return fmt.Errorf("download error: %w", err)
 	}
 	defer resp.Body.Close()
+
 	log.Printf("download %v", fullPath)
-	return self.storage.Save(parentPath, fname, resp.Body)
+	if err = self.storage.Save(parentPath, fname, resp.Body); err != nil {
+		return fmt.Errorf("download error: %w", err)
+	}
+	return nil
 }
 
 // --------------------------------------------------
