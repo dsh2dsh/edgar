@@ -123,6 +123,7 @@ func TestClient_Get(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
 					func(req *http.Request) (*http.Response, error) {
+						assert.Equal(t, url, req.URL.String())
 						assert.Equal(t, ua, req.Header.Get("User-Agent"))
 						return recorder.Result(), nil
 					})
@@ -257,27 +258,33 @@ func TestClient_indexJsonURL(t *testing.T) {
 }
 
 func TestClient_IndexArchive(t *testing.T) {
+	const testPath = "full-index"
+
 	fakeIndex := fakeArchiveIndex()
 	jsonIndex, err := json.Marshal(&fakeIndex)
 	require.NoError(t, err)
 	assert.NotEmpty(t, jsonIndex)
 
 	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
 	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
 		func(req *http.Request) (*http.Response, error) {
+			wantUrl, err := c.indexJsonURL(testPath)
+			require.NoError(t, err)
+			assert.Equal(t, wantUrl, req.URL.String())
 			recorder := httptest.NewRecorder()
-			_, err := recorder.Write(jsonIndex)
+			_, err = recorder.Write(jsonIndex)
 			require.NoError(t, err)
 			return recorder.Result(), nil
 		})
 
-	c := testNew(t, WithHttpClient(httpClient))
-	gotIndex, err := c.IndexArchive(context.Background(), "full-index")
+	gotIndex, err := c.IndexArchive(context.Background(), testPath)
 	require.NoError(t, err)
 	assert.Equal(t, &fakeIndex, &gotIndex)
 
 	gotIndex, err = c.WithArchivesBaseURL(":localhost").
-		IndexArchive(context.Background(), "full-index")
+		IndexArchive(context.Background(), testPath)
 	require.Error(t, err)
 	var emptyIndex ArchiveIndex
 	assert.Equal(t, &emptyIndex, &gotIndex)
@@ -285,15 +292,17 @@ func TestClient_IndexArchive(t *testing.T) {
 
 func TestClient_GetArchiveFile_ok(t *testing.T) {
 	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
 	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
 		func(req *http.Request) (*http.Response, error) {
+			assert.Equal(t, c.ArchivesBaseURL(), req.URL.String())
 			recorder := httptest.NewRecorder()
 			_, err := recorder.WriteString("foobar")
 			require.NoError(t, err)
 			return recorder.Result(), nil
 		})
 
-	c := testNew(t, WithHttpClient(httpClient))
 	resp, err := c.GetArchiveFile(context.Background(), "")
 	require.NoError(t, err)
 	defer resp.Body.Close()
