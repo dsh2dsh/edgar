@@ -281,3 +281,30 @@ func TestClient_IndexArchive(t *testing.T) {
 	var emptyIndex ArchiveIndex
 	assert.Equal(t, &emptyIndex, &gotIndex)
 }
+
+func TestClient_GetArchiveFile_ok(t *testing.T) {
+	httpClient := mocks.NewMockHttpRequestDoer(t)
+	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
+		func(req *http.Request) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			_, err := recorder.WriteString("foobar")
+			require.NoError(t, err)
+			return recorder.Result(), nil
+		})
+
+	c := testNew(t, WithHttpClient(httpClient))
+	resp, err := c.GetArchiveFile(context.Background(), "")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("foobar"), content)
+}
+
+func TestClient_GetArchiveFile_error(t *testing.T) {
+	httpClient := mocks.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient)).WithArchivesBaseURL(":localhost")
+	_, err := c.GetArchiveFile(context.Background(), "")
+	require.Error(t, err)
+}

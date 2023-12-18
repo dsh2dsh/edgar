@@ -152,3 +152,12 @@ func (self *Client) indexJsonURL(path string) (string, error) {
 	}
 	return url, nil
 }
+
+func (self *Client) GetArchiveFile(ctx context.Context, path string,
+) (*http.Response, error) {
+	url, err := url.JoinPath(self.ArchivesBaseURL(), path)
+	if err != nil {
+		return nil, fmt.Errorf("join path %q: %w", path, err)
+	}
+	return self.Get(ctx, url)
+}
