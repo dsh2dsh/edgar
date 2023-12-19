@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	archivesBaseURL = "https://www.sec.gov/Archives"
+	archivesBaseURL = "https://www.sec.gov/Archives/edgar"
 
 	// Default access rate for EDGAR, see
 	// https://www.sec.gov/os/webmaster-faq#code-support

@@ -21,16 +21,16 @@ import (
 const downloadProcs = 10
 
 var downloadCmd = cobra.Command{
-	Use:   "download indexPath [files...]",
-	Short: "Recursively download files from EDGAR's /Archives/indexPath",
+	Use:   "download index [files...]",
+	Short: "Recursively download files from EDGAR's /Archives/edgar/index",
 	Example: `
   - Download all master.gz files from full-index:
 
-    $ edgar download edgar/full-index master.gz
+    $ edgar download full-index master.gz
 
   - Download all files from daily-index:
 
-    $ edgar download edgar/daily-index`,
+    $ edgar download daily-index`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := newClient()
