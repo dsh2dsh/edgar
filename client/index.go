@@ -1,6 +1,6 @@
 package client
 
-const indexJsonName = "index.json"
+import "fmt"
 
 type ArchiveIndex struct {
 	Directory struct {
@@ -28,4 +28,18 @@ func (self *ArchiveIndex) Name() string {
 
 func (self *ArchiveIndex) Parent() string {
 	return self.Directory.ParentDir
+}
+
+// --------------------------------------------------
+
+type companyTickers map[string]CompanyTicker
+
+type CompanyTicker struct {
+	CIK    uint32 `json:"cik_str"`
+	Ticker string `json:"ticker"`
+	Title  string `json:"title"`
+}
+
+func (self *CompanyTicker) URI() string {
+	return fmt.Sprintf("%010d", self.CIK)
 }

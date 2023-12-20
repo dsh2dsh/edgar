@@ -12,7 +12,9 @@ import (
 )
 
 const (
-	archivesBaseURL = "https://www.sec.gov/Archives"
+	archivesBaseURL       = "https://www.sec.gov/Archives"
+	companyTickersJsonURL = "https://www.sec.gov/files/company_tickers.json"
+	indexJsonName         = "index.json"
 
 	// Default access rate for EDGAR, see
 	// https://www.sec.gov/os/webmaster-faq#code-support
@@ -160,4 +162,17 @@ func (self *Client) GetArchiveFile(ctx context.Context, path string,
 		return nil, fmt.Errorf("join path %q: %w", path, err)
 	}
 	return self.Get(ctx, url)
+}
+
+func (self *Client) CompanyTickers(ctx context.Context) ([]CompanyTicker, error) {
+	tickersMap := make(companyTickers, 0)
+	if err := self.GetJSON(ctx, companyTickersJsonURL, &tickersMap); err != nil {
+		return nil, err
+	}
+
+	allTickers := make([]CompanyTicker, 0, len(tickersMap))
+	for _, v := range tickersMap {
+		allTickers = append(allTickers, v)
+	}
+	return allTickers, nil
 }

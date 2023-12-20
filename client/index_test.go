@@ -41,3 +41,8 @@ func fakeArchiveIndex() (index ArchiveIndex) {
 	index.Directory.ParentDir = "../"
 	return
 }
+
+func TestCompanyTicker_URI(t *testing.T) {
+	ticker := CompanyTicker{CIK: 100}
+	assert.Equal(t, "0000000100", ticker.URI())
+}

@@ -3,6 +3,8 @@
 package client
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"testing"
 
@@ -39,4 +41,27 @@ func (self *ClientTestSuite) TestFullIndex() {
 	self.NotEmpty(items)
 	self.Equal("1993", items[0].Name)
 	self.Equal("dir", items[0].Type)
+}
+
+func (self *ClientTestSuite) TestFullIndexFile() {
+	resp, err := self.client.GetArchiveFile(context.Background(),
+		"edgar/full-index/xbrl.gz")
+	self.Require().NoError(err)
+	defer resp.Body.Close()
+
+	zr, err := gzip.NewReader(resp.Body)
+	self.Require().NoError(err)
+
+	scanner := bufio.NewScanner(zr)
+	self.Require().True(scanner.Scan())
+	self.Require().NoError(scanner.Err())
+	self.Equal("Description:           XBRL Index of EDGAR Dissemination Feed",
+		scanner.Text())
+}
+
+func (self *ClientTestSuite) TestCompanyTickers() {
+	tickers, err := self.client.CompanyTickers(context.Background())
+	self.Require().NoError(err)
+	self.NotEmpty(tickers)
+	self.NotEmpty(tickers[0].CIK)
 }

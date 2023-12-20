@@ -318,3 +318,44 @@ func TestClient_GetArchiveFile_error(t *testing.T) {
 	_, err := c.GetArchiveFile(context.Background(), "")
 	require.Error(t, err)
 }
+
+func TestClient_CompanyTickers(t *testing.T) {
+	appleTicker := CompanyTicker{
+		CIK:    320193,
+		Ticker: "AAPL",
+		Title:  "Apple Inc.",
+	}
+	tickersBytes, err := json.Marshal(companyTickers{"0": appleTicker})
+	require.NoError(t, err)
+
+	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
+	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
+		func(req *http.Request) (*http.Response, error) {
+			assert.Equal(t, companyTickersJsonURL, req.URL.String())
+			recorder := httptest.NewRecorder()
+			_, err := recorder.Write(tickersBytes)
+			require.NoError(t, err)
+			return recorder.Result(), nil
+		})
+
+	gotTickers, err := c.CompanyTickers(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []CompanyTicker{appleTicker}, gotTickers)
+}
+
+func TestClient_CompanyTickers_error(t *testing.T) {
+	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
+	testErr := errors.New("test error")
+	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
+		func(req *http.Request) (*http.Response, error) {
+			return nil, testErr
+		})
+
+	gotTickers, err := c.CompanyTickers(context.Background())
+	require.ErrorIs(t, err, testErr)
+	assert.Nil(t, gotTickers)
+}
