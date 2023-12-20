@@ -17,8 +17,10 @@ import (
 	"github.com/dsh2dsh/edgar/client"
 )
 
-// Number of parallel downloads
-const downloadProcs = 10
+const (
+	downloadProcs = 10 // Number of parallel downloads
+	edgarPath     = "edgar"
+)
 
 var downloadCmd = cobra.Command{
 	Use:   "download index [files...]",
@@ -40,7 +42,7 @@ var downloadCmd = cobra.Command{
 		if len(args) > 1 {
 			d.WithNeedFiles(args[1:])
 		}
-		cobra.CheckErr(d.Download(args[0]))
+		cobra.CheckErr(d.Download(filepath.Join(edgarPath, args[0])))
 	},
 }
 
