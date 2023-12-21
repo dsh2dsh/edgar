@@ -12,7 +12,9 @@ import (
 )
 
 const (
+	apiBaseURL            = "https://data.sec.gov"
 	archivesBaseURL       = "https://www.sec.gov/Archives"
+	companyFactsURI       = "/api/xbrl/companyfacts/CIK%010d.json"
 	companyTickersJsonURL = "https://www.sec.gov/files/company_tickers.json"
 	indexJsonName         = "index.json"
 
@@ -33,7 +35,7 @@ type HttpRequestDoer interface {
 type Limiter interface{ Wait(context.Context) error }
 
 func New(opts ...ClientOption) *Client {
-	c := &Client{}
+	c := &Client{apiBaseURL: apiBaseURL}
 	return c.applyOptions(opts...)
 }
 
@@ -52,6 +54,7 @@ type Client struct {
 	limiter Limiter
 	ua      string
 
+	apiBaseURL       string
 	archrivesBaseUrl string
 }
 
@@ -68,6 +71,11 @@ func (self *Client) applyOptions(opts ...ClientOption) *Client {
 		self.limiter = rate.NewLimiter(limitRate, limitRate)
 	}
 
+	return self
+}
+
+func (self *Client) WithApiBaseURL(u string) *Client {
+	self.apiBaseURL = u
 	return self
 }
 
@@ -165,7 +173,7 @@ func (self *Client) GetArchiveFile(ctx context.Context, path string,
 }
 
 func (self *Client) CompanyTickers(ctx context.Context) ([]CompanyTicker, error) {
-	tickersMap := make(companyTickers, 0)
+	var tickersMap companyTickers
 	if err := self.GetJSON(ctx, companyTickersJsonURL, &tickersMap); err != nil {
 		return nil, err
 	}
@@ -175,4 +183,16 @@ func (self *Client) CompanyTickers(ctx context.Context) ([]CompanyTicker, error)
 		allTickers = append(allTickers, v)
 	}
 	return allTickers, nil
+}
+
+func (self *Client) CompanyFacts(ctx context.Context, cik uint32,
+) (facts CompanyFacts, err error) {
+	jsonName := fmt.Sprintf(companyFactsURI, cik)
+	url, err := url.JoinPath(self.apiBaseURL, jsonName)
+	if err != nil {
+		err = fmt.Errorf("join %q, %q: %w", self.apiBaseURL, jsonName, err)
+		return
+	}
+	err = self.GetJSON(ctx, url, &facts)
+	return
 }

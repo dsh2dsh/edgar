@@ -65,3 +65,27 @@ func (self *ClientTestSuite) TestCompanyTickers() {
 	self.NotEmpty(tickers)
 	self.NotEmpty(tickers[0].CIK)
 }
+
+func (self *ClientTestSuite) TestCompanyFacts() {
+	const appleCIK = 320193
+	facts, err := self.client.CompanyFacts(context.Background(), appleCIK)
+	self.Require().NoError(err)
+	self.Equal(uint32(appleCIK), facts.CIK)
+	self.Equal("Apple Inc.", facts.EntityName)
+
+	self.Contains(facts.Facts, "dei")
+	self.NotEmpty(facts.Facts["dei"])
+
+	self.Require().Contains(facts.Facts, "us-gaap")
+	usGaap := facts.Facts["us-gaap"]
+	self.NotEmpty(usGaap)
+
+	self.Require().Contains(usGaap, "AccountsPayable")
+	fact := usGaap["AccountsPayable"]
+	self.NotEmpty(fact)
+	self.Equal("Accounts Payable (Deprecated 2009-01-31)", fact.Label)
+
+	self.Require().Contains(fact.Units, "USD")
+	usd := fact.Units["USD"]
+	self.NotEmpty(usd)
+}

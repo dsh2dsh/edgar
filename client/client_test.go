@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +19,8 @@ import (
 	"github.com/dsh2dsh/edgar/internal/mocks/client"
 	mocksIo "github.com/dsh2dsh/edgar/internal/mocks/io"
 )
+
+const appleCIK = 320193
 
 func TestNew(t *testing.T) {
 	c := testNew(t)
@@ -358,4 +362,52 @@ func TestClient_CompanyTickers_error(t *testing.T) {
 	gotTickers, err := c.CompanyTickers(context.Background())
 	require.ErrorIs(t, err, testErr)
 	assert.Nil(t, gotTickers)
+}
+
+func TestClient_CompanyFacts(t *testing.T) {
+	appleFacts := CompanyFacts{
+		CIK:        appleCIK,
+		EntityName: "Apple Inc.",
+		Facts: map[string]map[string]CompanyFact{
+			"dei": {},
+			"us-gaap": {
+				"AccountsPayable": CompanyFact{
+					Label: "Accounts Payable (Deprecated 2009-01-31)",
+					Units: map[string][]FactUnit{
+						"USD": {},
+					},
+				},
+			},
+		},
+	}
+	factBytes, err := json.Marshal(appleFacts)
+	require.NoError(t, err)
+
+	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
+	jsonName := fmt.Sprintf(companyFactsURI, appleCIK)
+	wantUrl, err := url.JoinPath(c.apiBaseURL, jsonName)
+	require.NoError(t, err)
+
+	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
+		func(req *http.Request) (*http.Response, error) {
+			assert.Equal(t, wantUrl, req.URL.String())
+			recorder := httptest.NewRecorder()
+			_, err := recorder.Write(factBytes)
+			require.NoError(t, err)
+			return recorder.Result(), nil
+		})
+
+	gotFacts, err := c.CompanyFacts(context.Background(), appleCIK)
+	require.NoError(t, err)
+	assert.Equal(t, appleFacts, gotFacts)
+}
+
+func TestClient_CompanyFacts_error(t *testing.T) {
+	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient)).WithApiBaseURL(":localhost")
+
+	_, err := c.CompanyFacts(context.Background(), appleCIK)
+	require.Error(t, err)
 }
