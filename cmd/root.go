@@ -10,21 +10,12 @@ import (
 	"github.com/dsh2dsh/edgar/client"
 )
 
-var (
-	edgarDataDir string
-
-	rootCmd = cobra.Command{
-		Use:   "edgar",
-		Short: "Download data files from SEC EDGAR",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return loadEnvs()
-		},
-	}
-)
-
-func init() {
-	rootCmd.PersistentFlags().StringVarP(&edgarDataDir, "datadir", "d", "./",
-		"store EDGAR files into this directory")
+var rootCmd = cobra.Command{
+	Use:   "edgar",
+	Short: "Download data files from SEC EDGAR",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return loadEnvs()
+	},
 }
 
 func Execute() {

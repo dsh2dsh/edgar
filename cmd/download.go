@@ -22,10 +22,13 @@ const (
 	edgarPath     = "edgar"
 )
 
-var downloadCmd = cobra.Command{
-	Use:   "download index [files...]",
-	Short: "Recursively download files from EDGAR's /Archives/edgar/index",
-	Example: `
+var (
+	edgarDataDir string
+
+	downloadCmd = cobra.Command{
+		Use:   "download index [files...]",
+		Short: "Recursively download files from EDGAR's /Archives/edgar/index",
+		Example: `
   - Download all master.gz files from full-index:
 
     $ edgar download full-index master.gz
@@ -33,20 +36,23 @@ var downloadCmd = cobra.Command{
   - Download all files from daily-index:
 
     $ edgar download daily-index`,
-	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		client, err := newClient()
-		cobra.CheckErr(err)
-		d := NewDownload(client, newDownloadDir(edgarDataDir)).
-			WithProcsLimit(downloadProcs)
-		if len(args) > 1 {
-			d.WithNeedFiles(args[1:])
-		}
-		cobra.CheckErr(d.Download(filepath.Join(edgarPath, args[0])))
-	},
-}
+		Args: cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client, err := newClient()
+			cobra.CheckErr(err)
+			d := NewDownload(client, newDownloadDir(edgarDataDir)).
+				WithProcsLimit(downloadProcs)
+			if len(args) > 1 {
+				d.WithNeedFiles(args[1:])
+			}
+			cobra.CheckErr(d.Download(filepath.Join(edgarPath, args[0])))
+		},
+	}
+)
 
 func init() {
+	downloadCmd.Flags().StringVarP(&edgarDataDir, "datadir", "d", "./",
+		"store EDGAR files into this directory")
 	rootCmd.AddCommand(&downloadCmd)
 }
 
