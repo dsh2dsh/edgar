@@ -21,7 +21,8 @@ CREATE TABLE fact_labels (
   fact_label TEXT    NOT NULL,
   descr      TEXT    NOT NULL,
   xxhash1    NUMERIC NOT NULL,
-  xxhash2    NUMERIC NOT NULL
+  xxhash2    NUMERIC NOT NULL,
+  UNIQUE(fact_id, xxhash1, xxhash2)
 );
 
 DROP TABLE IF EXISTS units CASCADE;
