@@ -81,3 +81,37 @@ INSERT INTO fact_labels (fact_id, fact_label, descr, xxhash1, xxhash2)
 	}
 	return nil
 }
+
+func (self *Repo) AddUnit(ctx context.Context, name string) (uint32, error) {
+	makeErr := func(err error) error {
+		return fmt.Errorf("add unit %q: %w", name, err)
+	}
+
+	rows, err := self.db.Query(ctx, `
+INSERT INTO units (unit_name)
+  VALUES          ($1)
+  ON CONFLICT DO NOTHING
+  RETURNING id`, name)
+	if err != nil {
+		return 0, makeErr(err)
+	}
+
+	if id, err := pgx.CollectOneRow(rows, pgx.RowTo[uint32]); err == nil {
+		return id, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, makeErr(err)
+	}
+
+	rows, err = self.db.Query(ctx,
+		`SELECT id FROM units WHERE unit_name = $1`, name)
+	if err != nil {
+		return 0, makeErr(err)
+	}
+
+	id, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
+	if err != nil {
+		return 0, makeErr(err)
+	}
+
+	return id, nil
+}

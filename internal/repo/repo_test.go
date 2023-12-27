@@ -79,6 +79,13 @@ CREATE TEMPORARY TABLE fact_labels (
   UNIQUE(fact_id, xxhash1, xxhash2)
 )`)
 	self.Require().NoError(err)
+
+	_, err = self.db.Exec(ctx, `
+CREATE TEMPORARY TABLE units (
+  id        SERIAL PRIMARY KEY,
+  unit_name TEXT   NOT NULL UNIQUE
+)`)
+	self.Require().NoError(err)
 }
 
 func (self *RepoTestSuite) SetupTest() {
@@ -237,4 +244,70 @@ func (self *RepoTestSuite) TestRepo_AddLabel() {
 	// constraint "fact_labels_fact_id_fkey" (SQLSTATE 23503)
 	self.Require().Error(self.repo.AddLabel(
 		ctx, 0, label, descr, labelHash, descrHash))
+}
+
+func (self *RepoTestSuite) TestRepo_AddUnit() {
+	const unitName = "USD"
+	ctx := context.Background()
+
+	unitId, err := self.repo.AddUnit(ctx, unitName)
+	self.Require().NoError(err)
+	self.NotZero(unitId)
+
+	unitId, err = self.repo.AddUnit(ctx, unitName)
+	self.Require().NoError(err)
+	self.NotZero(unitId)
+
+	m := mocks.NewMockPostgreser(self.T())
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err //nolint:wrapcheck
+		}).Once()
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+
+	unitId, err = self.repo.AddUnit(ctx, unitName)
+	self.Require().Error(err)
+	self.Zero(unitId)
+
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+		}).Once()
+
+	wantErr := errors.New("test error")
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).Return(nil, wantErr).Once()
+
+	unitId, err = self.repo.AddUnit(ctx, unitName)
+	self.Require().Error(err)
+	self.Zero(unitId)
+
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+		}).Once()
+
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err //nolint:wrapcheck
+		}).Once()
+
+	unitId, err = self.repo.AddUnit(ctx, unitName)
+	self.Require().Error(err)
+	self.Zero(unitId)
+}
+
+func TestRepo_AddUnit_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+	db.EXPECT().Query(ctx, mock.Anything, mock.Anything).Return(nil, wantErr)
+
+	id, err := repo.AddUnit(ctx, "USD")
+	require.ErrorIs(t, err, wantErr)
+	assert.Zero(t, id)
 }
