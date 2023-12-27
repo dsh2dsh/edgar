@@ -123,7 +123,9 @@ func NewUpload(edgar *client.Client, repo *repo.Repo) *Upload {
 		edgar: edgar,
 		repo:  repo,
 
-		group: new(singleflight.Group),
+		knownFacts: newFacts(),
+		knownUnits: newFactUnits(),
+
 		procs: 1,
 	}
 }
@@ -132,11 +134,10 @@ type Upload struct {
 	edgar *client.Client
 	repo  *repo.Repo
 
-	group *singleflight.Group
-	mu    sync.RWMutex
-	procs int
+	knownFacts facts
+	knownUnits factUnits
 
-	knownFacts map[string]*knownFact
+	procs int
 }
 
 func (self *Upload) WithProcsLimit(n int) *Upload {
@@ -178,10 +179,10 @@ func (self *Upload) processCompany(ctx context.Context, cik uint32) error {
 	}
 	log.Printf("got facts of CIK=%v: %q", company.CIK, company.EntityName)
 
-	isCompanyNew, err := self.repo.AddCompany(ctx, company.CIK, company.EntityName)
+	isNewCompany, err := self.repo.AddCompany(ctx, company.CIK, company.EntityName)
 	if err != nil {
 		return fmt.Errorf("upload: %w", err)
-	} else if isCompanyNew {
+	} else if isNewCompany {
 		log.Printf("new company added: CIK=%v %q", company.CIK, company.EntityName)
 	}
 
@@ -192,6 +193,12 @@ func (self *Upload) processCompany(ctx context.Context, cik uint32) error {
 			if err != nil {
 				return fmt.Errorf("add fact for company CIK=%v: %w", company.CIK, err)
 			}
+			for unitName := range fact.Units {
+				_, err := self.addUnit(ctx, unitName)
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
 
@@ -200,44 +207,78 @@ func (self *Upload) processCompany(ctx context.Context, cik uint32) error {
 
 func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 ) (uint32, error) {
+	factKey := strings.Join([]string{tax, name}, ":")
 	labelHash := xxhash.Sum64String(label)
 	descrHash := xxhash.Sum64String(descr)
 
-	factKey, fact, ok := self.knownFact(tax, name)
+	fact, ok := self.knownFacts.Fact(factKey)
 	if !ok {
-		fact, err := self.createFact(ctx, factKey, tax, name, labelHash, descrHash)
-		return fact.Id, err
+		newFact, err := self.knownFacts.Create(factKey, labelHash, descrHash,
+			func() (uint32, error) {
+				log.Printf("creating new fact %q...", factKey)
+				//nolint:wrapcheck // will wrap below
+				return self.repo.AddFact(ctx, tax, name)
+			})
+		if err != nil {
+			return 0, fmt.Errorf("failed create fact %q: %w", factKey, err)
+		}
+		fact = newFact
 	}
 
 	err := fact.AddLabel(ctx, labelHash, descrHash, func() error {
 		log.Printf("creating new label for fact %q: %#x, %#x...",
 			factKey, labelHash, descrHash)
-		//nolint:wrapcheck // well wrap below
+		//nolint:wrapcheck // will wrap below
 		return self.repo.AddLabel(ctx, fact.Id, label, descr, labelHash, descrHash)
 	})
 	if err != nil {
-		err = fmt.Errorf("failed add label for fact %q: %w", factKey, err)
+		return 0, fmt.Errorf("failed add label for fact %q: %w", factKey, err)
 	}
 
-	return fact.Id, err
+	return fact.Id, nil
 }
 
-func (self *Upload) knownFact(tax, name string) (key string, fact *knownFact, ok bool) {
-	key = strings.Join([]string{tax, name}, ":")
+func (self *Upload) addUnit(ctx context.Context, name string) (uint32, error) {
+	unitId, err := self.knownUnits.Id(ctx, name, func() (uint32, error) {
+		log.Printf("creating new unit %q...", name)
+		//nolint:wrapcheck // will wrap below
+		return self.repo.AddUnit(ctx, name)
+	})
+	if err != nil {
+		return unitId, fmt.Errorf("failed create unit %q: %w", name, err)
+	}
+	return unitId, nil
+}
+
+// --------------------------------------------------
+
+func newFacts() facts {
+	return facts{knownFacts: make(map[string]*knownFact, 0)}
+}
+
+type facts struct {
+	knownFacts map[string]*knownFact
+	group      singleflight.Group
+	mu         sync.RWMutex
+}
+
+func (self *facts) Fact(key string) (fact *knownFact, ok bool) {
 	self.mu.RLock()
 	defer self.mu.RUnlock()
 	fact, ok = self.knownFacts[key]
 	return
 }
 
-func (self *Upload) createFact(ctx context.Context, key, tax, name string,
-	labelHash, descrHash uint64,
+func (self *facts) Create(key string, labelHash, descrHash uint64,
+	genFactId func() (uint32, error),
 ) (*knownFact, error) {
 	v, err, _ := self.group.Do(key, func() (interface{}, error) {
-		log.Printf("creating new fact %q...", key)
-		factId, err := self.repo.AddFact(ctx, tax, name)
+		if fact, ok := self.Fact(key); ok {
+			return fact, nil
+		}
+		factId, err := genFactId()
 		if err != nil {
-			return nil, fmt.Errorf("failed create fact %q: %w", key, err)
+			return nil, err
 		}
 		fact := &knownFact{
 			Id:        factId,
@@ -249,10 +290,10 @@ func (self *Upload) createFact(ctx context.Context, key, tax, name string,
 		self.knownFacts[key] = fact
 		return fact, nil
 	})
-	if err != nil {
-		return nil, err //nolint:wrapcheck // already wrapped inside Do
-	}
 
+	if err != nil {
+		return nil, err //nolint:wrapcheck // wrapped inside genFactId
+	}
 	return v.(*knownFact), nil
 }
 
@@ -270,12 +311,14 @@ type knownFact struct {
 func (self *knownFact) AddLabel(ctx context.Context, labelHash, descrHash uint64,
 	callback func() error,
 ) error {
+	if self.LabelHash == labelHash && self.DescrHash == descrHash {
+		return nil
+	}
+
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
-	if self.LabelHash == labelHash && self.DescrHash == descrHash {
-		return nil
-	} else if len(self.moreLabels) > 0 {
+	if len(self.moreLabels) > 0 {
 		if descrMap, ok := self.moreLabels[labelHash]; ok {
 			if _, ok = descrMap[descrHash]; ok {
 				return nil
@@ -297,4 +340,57 @@ func (self *knownFact) AddLabel(ctx context.Context, labelHash, descrHash uint64
 		self.moreLabels[labelHash][descrHash] = struct{}{}
 	}
 	return nil
+}
+
+// --------------------------------------------------
+
+func newFactUnits() factUnits {
+	return factUnits{units: make(map[string]uint32, 0)}
+}
+
+type factUnits struct {
+	units map[string]uint32
+	group singleflight.Group
+	mu    sync.RWMutex
+}
+
+func (self *factUnits) Id(ctx context.Context, name string,
+	genUnitId func() (uint32, error),
+) (uint32, error) {
+	if unitId, ok := self.knownUnit(name); ok {
+		return unitId, nil
+	}
+	return self.createUnit(ctx, name, genUnitId)
+}
+
+func (self *factUnits) knownUnit(name string) (id uint32, ok bool) {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	id, ok = self.units[name]
+	return
+}
+
+func (self *factUnits) createUnit(ctx context.Context, name string,
+	genUnitId func() (uint32, error),
+) (uint32, error) {
+	v, err, _ := self.group.Do(name, func() (interface{}, error) {
+		if unitId, ok := self.knownUnit(name); ok {
+			return unitId, nil
+		}
+
+		id, err := genUnitId()
+		if err != nil {
+			return 0, err
+		}
+
+		self.mu.Lock()
+		defer self.mu.Unlock()
+		self.units[name] = id
+		return id, nil
+	})
+
+	if err != nil {
+		return 0, err //nolint:wrapcheck // wrapped inside genUnitId
+	}
+	return v.(uint32), nil
 }
