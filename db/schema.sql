@@ -28,7 +28,7 @@ CREATE TABLE fact_labels (
 DROP TABLE IF EXISTS units CASCADE;
 CREATE TABLE units (
   id        SERIAL PRIMARY KEY,
-  unit_name TEXT   NOT NULL
+  unit_name TEXT   NOT NULL UNIQUE
 );
 
 DROP TABLE IF EXISTS fact_units;
