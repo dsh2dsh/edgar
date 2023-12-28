@@ -106,7 +106,7 @@ func TestClient_Get(t *testing.T) {
 		{
 			name: "NewRequestWithContext error",
 			get: func(c *Client) (*http.Response, error) {
-				return c.Get(nil, url) //nolint:staticcheck
+				return c.Get(nil, url) //nolint:staticcheck // because we need an error
 			},
 			wantErr: true,
 		},
