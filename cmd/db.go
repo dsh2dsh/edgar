@@ -280,11 +280,7 @@ func (self *facts) Create(key string, labelHash, descrHash uint64,
 		if err != nil {
 			return nil, err
 		}
-		fact := &knownFact{
-			Id:        factId,
-			LabelHash: labelHash,
-			DescrHash: descrHash,
-		}
+		fact := newKnownFact(factId, labelHash, descrHash)
 		self.mu.Lock()
 		defer self.mu.Unlock()
 		self.knownFacts[key] = fact
@@ -298,6 +294,14 @@ func (self *facts) Create(key string, labelHash, descrHash uint64,
 }
 
 // --------------------------------------------------
+
+func newKnownFact(id uint32, labelHash, descrHash uint64) *knownFact {
+	return &knownFact{
+		Id:        id,
+		LabelHash: labelHash,
+		DescrHash: descrHash,
+	}
+}
 
 type knownFact struct {
 	Id        uint32
