@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -114,4 +115,62 @@ INSERT INTO units (unit_name)
 	}
 
 	return id, nil
+}
+
+func (self *Repo) AddFactUnit(ctx context.Context, fact FactUnit) error {
+	_, err := self.db.Exec(ctx, `
+INSERT INTO fact_units (company_cik,  fact_id,   unit_id,
+                        fact_start,   fact_end,  val,      accn,  fy,  fp,
+                        form,         filed,     frame)
+  VALUES               (@company_cik, @fact_id,  @unit_id,
+                        @fact_start,  @fact_end, @val,     @accn, @fy, @fp,
+                        @form,        @filed,    @frame)`, fact.NamedArgs())
+	if err != nil {
+		return fmt.Errorf("failed add fact unit: %w", err)
+	}
+	return nil
+}
+
+type FactUnit struct {
+	CIK    uint32 `db:"company_cik"`
+	FactId uint32 `db:"fact_id"`
+	UnitId uint32 `db:"unit_id"`
+
+	Start *time.Time `db:"fact_start"`
+	End   time.Time  `db:"fact_end"`
+	Val   float64    `db:"val"`
+	Accn  string     `db:"accn"`
+	FY    uint       `db:"fy"`
+	FP    string     `db:"fp"`
+	Form  string     `db:"form"`
+	Filed time.Time  `db:"filed"`
+	Frame *string    `db:"frame"`
+}
+
+func (self *FactUnit) WithStart(d time.Time) *FactUnit {
+	self.Start = &d
+	return self
+}
+
+func (self *FactUnit) WithFrame(frame string) *FactUnit {
+	self.Frame = &frame
+	return self
+}
+
+func (self *FactUnit) NamedArgs() pgx.NamedArgs {
+	return pgx.NamedArgs{
+		"company_cik": self.CIK,
+		"fact_id":     self.FactId,
+		"unit_id":     self.UnitId,
+
+		"fact_start": self.Start,
+		"fact_end":   self.End,
+		"val":        self.Val,
+		"accn":       self.Accn,
+		"fy":         self.FY,
+		"fp":         self.FP,
+		"filed":      self.Filed,
+		"form":       self.Form,
+		"frame":      self.Frame,
+	}
 }

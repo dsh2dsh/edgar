@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/caarlos0/env/v10"
 	"github.com/cespare/xxhash/v2"
@@ -22,6 +23,11 @@ import (
 const (
 	appleCIK  = 320193
 	appleName = "Apple Inc."
+
+	factTax  = "us-gaap"
+	factName = "AccountsPayable"
+
+	unitName = "USD"
 )
 
 func TestRepoSuite(t *testing.T) {
@@ -85,6 +91,24 @@ CREATE TEMPORARY TABLE units (
   unit_name TEXT   NOT NULL UNIQUE
 )`)
 	self.Require().NoError(err)
+
+	_, err = self.db.Exec(ctx, `
+CREATE TEMPORARY TABLE fact_units (
+  company_cik INTEGER NOT NULL REFERENCES companies(cik),
+  fact_id     INTEGER NOT NULL REFERENCES facts(id),
+  unit_id     INTEGER NOT NULL REFERENCES units(id),
+  fact_start  DATE,
+  fact_end    DATE    NOT NULL,
+  val         NUMERIC NOT NULL,
+  accn        TEXT    NOT NULL,
+  fy          INTEGER NOT NULL,
+  fp          TEXT    NOT NULL,
+  form        TEXT    NOT NULL,
+  filed       DATE    NOT NULL,
+  frame       TEXT,
+  PRIMARY KEY (company_cik, fact_id, unit_id)
+)`)
+	self.Require().NoError(err)
 }
 
 func (self *RepoTestSuite) SetupTest() {
@@ -92,25 +116,27 @@ func (self *RepoTestSuite) SetupTest() {
 }
 
 func (self *RepoTestSuite) TearDownTest() {
-	allTables := []string{"companies", "facts"}
+	allTables := []string{"companies", "facts", "fact_labels", "units", "fact_units"}
 	for _, tname := range allTables {
 		sql := fmt.Sprintf("TRUNCATE %s CASCADE", tname)
 		_, err := self.db.Exec(context.Background(), sql)
 		self.Require().NoError(err)
-
 	}
 }
 
 // --------------------------------------------------
 
 func (self *RepoTestSuite) TestRepo_AddCompany() {
+	self.addTestCompany(context.Background())
 	added, err := self.repo.AddCompany(context.Background(), appleCIK, appleName)
 	self.Require().NoError(err)
-	self.True(added)
-
-	added, err = self.repo.AddCompany(context.Background(), appleCIK, appleName)
-	self.Require().NoError(err)
 	self.False(added)
+}
+
+func (self *RepoTestSuite) addTestCompany(ctx context.Context) {
+	added, err := self.repo.AddCompany(ctx, appleCIK, appleName)
+	self.Require().NoError(err)
+	self.True(added)
 }
 
 func TestRepo_AddCompany_error(t *testing.T) {
@@ -128,15 +154,10 @@ func TestRepo_AddCompany_error(t *testing.T) {
 }
 
 func (self *RepoTestSuite) TestRepo_AddFact() {
-	const factTax = "us-gaap"
-	const factName = "AccountsPayable"
 	ctx := context.Background()
+	self.addTestFact(ctx)
 
 	factId, err := self.repo.AddFact(ctx, factTax, factName)
-	self.Require().NoError(err)
-	self.NotZero(factId)
-
-	factId, err = self.repo.AddFact(ctx, factTax, factName)
 	self.Require().NoError(err)
 	self.NotZero(factId)
 
@@ -186,6 +207,13 @@ func (self *RepoTestSuite) TestRepo_AddFact() {
 	self.Zero(factId)
 }
 
+func (self *RepoTestSuite) addTestFact(ctx context.Context) uint32 {
+	factId, err := self.repo.AddFact(ctx, factTax, factName)
+	self.Require().NoError(err)
+	self.NotZero(factId)
+	return factId
+}
+
 func TestRepo_AddFact_error(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("test error")
@@ -201,14 +229,11 @@ func TestRepo_AddFact_error(t *testing.T) {
 }
 
 func (self *RepoTestSuite) TestRepo_AddLabel() {
-	const factTax = "us-gaap"
-	const factName = "AccountsPayable"
 	const label = "Accounts Payable (Deprecated 2009-01-31)"
 	const descr = "Carrying value as of the balance sheet date of liabilities incurred (and for which invoices have typically been received) and payable to vendors for goods and services received that are used in an entity's business. For classified balance sheets, used to reflect the current portion of the liabilities (due within one year or within the normal operating cycle if longer); for unclassified balance sheets, used to reflect the total liabilities (regardless of due date)."
 
 	ctx := context.Background()
-	factId, err := self.repo.AddFact(ctx, factTax, factName)
-	self.Require().NoError(err)
+	factId := self.addTestFact(ctx)
 
 	labelHash := xxhash.Sum64String(label)
 	self.T().Logf("labelHash: %#x", labelHash)
@@ -246,14 +271,10 @@ func (self *RepoTestSuite) TestRepo_AddLabel() {
 }
 
 func (self *RepoTestSuite) TestRepo_AddUnit() {
-	const unitName = "USD"
 	ctx := context.Background()
+	self.addTestUnit(ctx)
 
 	unitId, err := self.repo.AddUnit(ctx, unitName)
-	self.Require().NoError(err)
-	self.NotZero(unitId)
-
-	unitId, err = self.repo.AddUnit(ctx, unitName)
 	self.Require().NoError(err)
 	self.NotZero(unitId)
 
@@ -298,6 +319,13 @@ func (self *RepoTestSuite) TestRepo_AddUnit() {
 	self.Zero(unitId)
 }
 
+func (self *RepoTestSuite) addTestUnit(ctx context.Context) uint32 {
+	unitId, err := self.repo.AddUnit(ctx, unitName)
+	self.Require().NoError(err)
+	self.NotZero(unitId)
+	return unitId
+}
+
 func TestRepo_AddUnit_error(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("test error")
@@ -309,4 +337,114 @@ func TestRepo_AddUnit_error(t *testing.T) {
 	id, err := repo.AddUnit(ctx, "USD")
 	require.ErrorIs(t, err, wantErr)
 	assert.Zero(t, id)
+}
+
+func (self *RepoTestSuite) TestRepo_AddFactUnit() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	unitId := self.addTestUnit(ctx)
+
+	fullFact := FactUnit{
+		CIK:    appleCIK,
+		FactId: factId,
+		UnitId: unitId,
+		End:    time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC),
+		Val:    5520000000,
+		Accn:   "0001193125-09-153165",
+		FY:     2009,
+		FP:     "Q3",
+		Form:   "10-Q",
+		Filed:  time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+	}
+	fullFact.WithStart(time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC)).
+		WithFrame("CY2008Q3I")
+
+	tests := []struct {
+		name      string
+		fact      FactUnit
+		prepare   func(t *testing.T, fact *FactUnit)
+		keepTable bool
+		wantErr   bool
+	}{
+		{
+			name:    "empty fact error",
+			wantErr: true,
+		},
+		{
+			name:    "requires CIK",
+			fact:    FactUnit{FactId: factId, UnitId: unitId},
+			wantErr: true,
+		},
+		{
+			name:    "requires FactId and UnitId",
+			fact:    FactUnit{CIK: appleCIK},
+			wantErr: true,
+		},
+		{
+			name:    "requires FactId",
+			fact:    FactUnit{CIK: appleCIK, UnitId: unitId},
+			wantErr: true,
+		},
+		{
+			name:    "requires UnitId",
+			fact:    FactUnit{CIK: appleCIK, FactId: factId},
+			wantErr: true,
+		},
+		{
+			name:      "with all Id",
+			fact:      FactUnit{CIK: appleCIK, FactId: factId, UnitId: unitId},
+			keepTable: true,
+		},
+		{
+			name:    "duplicate key",
+			fact:    FactUnit{CIK: appleCIK, FactId: factId, UnitId: unitId},
+			wantErr: true,
+		},
+		{
+			name: "with all fields",
+			fact: fullFact,
+		},
+		{
+			name: "without Start",
+			fact: fullFact,
+			prepare: func(t *testing.T, fact *FactUnit) {
+				fact.Start = nil
+			},
+		},
+		{
+			name: "without Frame",
+			fact: fullFact,
+			prepare: func(t *testing.T, fact *FactUnit) {
+				fact.Frame = nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		self.Run(tt.name, func() {
+			fact := tt.fact
+			if !tt.keepTable {
+				self.T().Cleanup(func() {
+					_, err := self.db.Exec(context.Background(), "TRUNCATE fact_units")
+					self.Require().NoError(err)
+				})
+			}
+			if tt.prepare != nil {
+				tt.prepare(self.T(), &fact)
+			}
+			err := self.repo.AddFactUnit(ctx, fact)
+			if tt.wantErr {
+				self.Require().Error(err)
+			} else {
+				self.Require().NoError(err)
+				rows, err := self.db.Query(ctx, `SELECT * FROM fact_units`)
+				self.Require().NoError(err)
+				gotFact, err := pgx.CollectExactlyOneRow(rows,
+					pgx.RowToStructByName[FactUnit])
+				self.Require().NoError(err)
+				self.Equal(fact, gotFact)
+			}
+		})
+	}
 }
