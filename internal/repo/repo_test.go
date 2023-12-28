@@ -28,7 +28,6 @@ func TestRepoSuite(t *testing.T) {
 	cfg := struct {
 		ConnURL string `env:"EDGAR_DB_URL,notEmpty"`
 	}{}
-	//nolint:wrapcheck
 	require.NoError(t, dotenv.Load(func() error { return env.Parse(&cfg) }))
 
 	conn, err := pgx.Connect(context.Background(), cfg.ConnURL)
@@ -146,7 +145,7 @@ func (self *RepoTestSuite) TestRepo_AddFact() {
 		RunAndReturn(
 			func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 				rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
-				return rows, err //nolint:wrapcheck
+				return rows, err
 			}).Once()
 	self.repo.db = m
 	self.T().Cleanup(func() { self.repo.db = self.db })
@@ -158,7 +157,7 @@ func (self *RepoTestSuite) TestRepo_AddFact() {
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(
 			func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-				return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+				return self.db.Query(ctx, sql, args...)
 			}).Once()
 
 	wantErr := errors.New("test error")
@@ -172,14 +171,14 @@ func (self *RepoTestSuite) TestRepo_AddFact() {
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(
 			func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-				return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+				return self.db.Query(ctx, sql, args...)
 			}).Once()
 
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(
 			func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 				rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
-				return rows, err //nolint:wrapcheck
+				return rows, err
 			}).Once()
 
 	factId, err = self.repo.AddFact(ctx, factTax, factName)
@@ -262,7 +261,7 @@ func (self *RepoTestSuite) TestRepo_AddUnit() {
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
-			return rows, err //nolint:wrapcheck
+			return rows, err
 		}).Once()
 	self.repo.db = m
 	self.T().Cleanup(func() { self.repo.db = self.db })
@@ -273,7 +272,7 @@ func (self *RepoTestSuite) TestRepo_AddUnit() {
 
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-			return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+			return self.db.Query(ctx, sql, args...)
 		}).Once()
 
 	wantErr := errors.New("test error")
@@ -285,13 +284,13 @@ func (self *RepoTestSuite) TestRepo_AddUnit() {
 
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-			return self.db.Query(ctx, sql, args...) //nolint:wrapcheck
+			return self.db.Query(ctx, sql, args...)
 		}).Once()
 
 	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
-			return rows, err //nolint:wrapcheck
+			return rows, err
 		}).Once()
 
 	unitId, err = self.repo.AddUnit(ctx, unitName)
