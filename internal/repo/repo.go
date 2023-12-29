@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func New(db Postgreser) *Repo {
@@ -136,24 +137,24 @@ type FactUnit struct {
 	FactId uint32 `db:"fact_id"`
 	UnitId uint32 `db:"unit_id"`
 
-	Start *time.Time `db:"fact_start"`
-	End   time.Time  `db:"fact_end"`
-	Val   float64    `db:"val"`
-	Accn  string     `db:"accn"`
-	FY    uint       `db:"fy"`
-	FP    string     `db:"fp"`
-	Form  string     `db:"form"`
-	Filed time.Time  `db:"filed"`
-	Frame *string    `db:"frame"`
+	Start pgtype.Date `db:"fact_start"`
+	End   time.Time   `db:"fact_end"`
+	Val   float64     `db:"val"`
+	Accn  string      `db:"accn"`
+	FY    uint        `db:"fy"`
+	FP    string      `db:"fp"`
+	Form  string      `db:"form"`
+	Filed time.Time   `db:"filed"`
+	Frame pgtype.Text `db:"frame"`
 }
 
 func (self *FactUnit) WithStart(d time.Time) *FactUnit {
-	self.Start = &d
+	self.Start = pgtype.Date{Time: d, Valid: true}
 	return self
 }
 
 func (self *FactUnit) WithFrame(frame string) *FactUnit {
-	self.Frame = &frame
+	self.Frame = pgtype.Text{String: frame, Valid: true}
 	return self
 }
 

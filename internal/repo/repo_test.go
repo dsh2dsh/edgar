@@ -12,6 +12,7 @@ import (
 	dotenv "github.com/dsh2dsh/expx-dotenv"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -409,14 +410,14 @@ func (self *RepoTestSuite) TestRepo_AddFactUnit() {
 			name: "without Start",
 			fact: fullFact,
 			prepare: func(t *testing.T, fact *FactUnit) {
-				fact.Start = nil
+				fact.Start = pgtype.Date{}
 			},
 		},
 		{
 			name: "without Frame",
 			fact: fullFact,
 			prepare: func(t *testing.T, fact *FactUnit) {
-				fact.Frame = nil
+				fact.Frame = pgtype.Text{}
 			},
 		},
 	}
