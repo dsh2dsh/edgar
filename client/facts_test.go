@@ -1,12 +1,66 @@
 package client
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCompanyFacts_Id(t *testing.T) {
+	facts := CompanyFacts{CIK: Uint32String(1895262)}
+	assert.Equal(t, uint32(1895262), facts.Id())
+}
+
+func TestCompanyFacts_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		json    string
+		wantErr bool
+		want    CompanyFacts
+	}{
+		{
+			name: "CIK as number",
+			json: `{ "cik": 1895262 }`,
+			want: CompanyFacts{CIK: Uint32String(1895262)},
+		},
+		{
+			name: "CIK as string",
+			json: `{ "cik": "0001895262" }`,
+			want: CompanyFacts{CIK: Uint32String(1895262)},
+		},
+		{
+			name:    "CIK string error",
+			json:    `{ "cik": "1895262.123" }`,
+			wantErr: true,
+		},
+		{
+			name:    "CIK number error",
+			json:    `{ "cik": 1895262.123 }`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got CompanyFacts
+			err := json.Unmarshal([]byte(tt.json), &got)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestUint32String_UnmarshalJSON_error(t *testing.T) {
+	var cik Uint32String
+	require.Error(t, cik.UnmarshalJSON([]byte{}))
+}
 
 func TestFactUnit_ParseTimes(t *testing.T) {
 	const unparseableTime = "unparseable time"

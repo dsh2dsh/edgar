@@ -411,3 +411,33 @@ func TestClient_CompanyFacts_error(t *testing.T) {
 	_, err := c.CompanyFacts(context.Background(), appleCIK)
 	require.Error(t, err)
 }
+
+func TestClient_CompanyFacts_strCIK(t *testing.T) {
+	const testCIK = 1895262
+
+	testFacts := `{
+    "cik": "0001895262",
+    "entityName": "Noble Corporation plc",
+    "facts": {} }`
+
+	wantFacts := CompanyFacts{
+		CIK:        testCIK,
+		EntityName: "Noble Corporation plc",
+		Facts:      map[string]map[string]CompanyFact{},
+	}
+
+	httpClient := client.NewMockHttpRequestDoer(t)
+	c := testNew(t, WithHttpClient(httpClient))
+
+	httpClient.EXPECT().Do(mock.Anything).RunAndReturn(
+		func(req *http.Request) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			_, err := recorder.WriteString(testFacts)
+			require.NoError(t, err)
+			return recorder.Result(), nil
+		})
+
+	gotFacts, err := c.CompanyFacts(context.Background(), testCIK)
+	require.NoError(t, err)
+	assert.Equal(t, wantFacts, gotFacts)
+}

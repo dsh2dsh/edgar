@@ -1,14 +1,46 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 )
 
 type CompanyFacts struct {
-	CIK        uint32                            `json:"cik"`
+	CIK        Uint32String                      `json:"cik"`
 	EntityName string                            `json:"entityName"`
 	Facts      map[string]map[string]CompanyFact `json:"facts"`
+}
+
+func (self *CompanyFacts) Id() uint32 {
+	return uint32(self.CIK)
+}
+
+type Uint32String uint32
+
+func (self *Uint32String) UnmarshalJSON(b []byte) error {
+	var value any
+	if err := json.Unmarshal(b, &value); err != nil {
+		return fmt.Errorf("client.Uint32String: %w", err)
+	}
+
+	if s, ok := value.(string); ok {
+		v, err := strconv.ParseUint(s, 10, 32)
+		if err != nil {
+			return fmt.Errorf("client.Uint32String: %w", err)
+		}
+		*self = Uint32String(v)
+		return nil
+	}
+
+	var v uint32
+	if err := json.Unmarshal(b, &v); err != nil {
+		return fmt.Errorf("client.Uint32String: %w", err)
+	}
+	*self = Uint32String(v)
+
+	return nil
 }
 
 type CompanyFact struct {
