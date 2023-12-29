@@ -106,8 +106,7 @@ CREATE TEMPORARY TABLE fact_units (
   fp          TEXT    NOT NULL,
   form        TEXT    NOT NULL,
   filed       DATE    NOT NULL,
-  frame       TEXT,
-  PRIMARY KEY (company_cik, fact_id, unit_id)
+  frame       TEXT
 )`)
 	self.Require().NoError(err)
 }
@@ -362,11 +361,10 @@ func (self *RepoTestSuite) TestRepo_AddFactUnit() {
 		WithFrame("CY2008Q3I")
 
 	tests := []struct {
-		name      string
-		fact      FactUnit
-		prepare   func(t *testing.T, fact *FactUnit)
-		keepTable bool
-		wantErr   bool
+		name    string
+		fact    FactUnit
+		prepare func(t *testing.T, fact *FactUnit)
+		wantErr bool
 	}{
 		{
 			name:    "empty fact error",
@@ -393,14 +391,8 @@ func (self *RepoTestSuite) TestRepo_AddFactUnit() {
 			wantErr: true,
 		},
 		{
-			name:      "with all Id",
-			fact:      FactUnit{CIK: appleCIK, FactId: factId, UnitId: unitId},
-			keepTable: true,
-		},
-		{
-			name:    "duplicate key",
-			fact:    FactUnit{CIK: appleCIK, FactId: factId, UnitId: unitId},
-			wantErr: true,
+			name: "with all Id",
+			fact: FactUnit{CIK: appleCIK, FactId: factId, UnitId: unitId},
 		},
 		{
 			name: "with all fields",
@@ -425,12 +417,10 @@ func (self *RepoTestSuite) TestRepo_AddFactUnit() {
 	for _, tt := range tests {
 		self.Run(tt.name, func() {
 			fact := tt.fact
-			if !tt.keepTable {
-				self.T().Cleanup(func() {
-					_, err := self.db.Exec(context.Background(), "TRUNCATE fact_units")
-					self.Require().NoError(err)
-				})
-			}
+			self.T().Cleanup(func() {
+				_, err := self.db.Exec(context.Background(), "TRUNCATE fact_units")
+				self.Require().NoError(err)
+			})
 			if tt.prepare != nil {
 				tt.prepare(self.T(), &fact)
 			}

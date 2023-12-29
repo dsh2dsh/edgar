@@ -44,6 +44,5 @@ CREATE TABLE fact_units (
   fp          TEXT    NOT NULL,
   form        TEXT    NOT NULL,
   filed       DATE    NOT NULL,
-  frame       TEXT,
-  PRIMARY KEY (company_cik, fact_id, unit_id)
+  frame       TEXT
 );
