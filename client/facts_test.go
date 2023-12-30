@@ -10,7 +10,7 @@ import (
 )
 
 func TestCompanyFacts_Id(t *testing.T) {
-	facts := CompanyFacts{CIK: Uint32String(1895262)}
+	facts := CompanyFacts{CIK: CIK(1895262)}
 	assert.Equal(t, uint32(1895262), facts.Id())
 }
 
@@ -24,12 +24,12 @@ func TestCompanyFacts_UnmarshalJSON(t *testing.T) {
 		{
 			name: "CIK as number",
 			json: `{ "cik": 1895262 }`,
-			want: CompanyFacts{CIK: Uint32String(1895262)},
+			want: CompanyFacts{CIK: CIK(1895262)},
 		},
 		{
 			name: "CIK as string",
 			json: `{ "cik": "0001895262" }`,
-			want: CompanyFacts{CIK: Uint32String(1895262)},
+			want: CompanyFacts{CIK: CIK(1895262)},
 		},
 		{
 			name:    "CIK string error",
@@ -58,7 +58,7 @@ func TestCompanyFacts_UnmarshalJSON(t *testing.T) {
 }
 
 func TestUint32String_UnmarshalJSON_error(t *testing.T) {
-	var cik Uint32String
+	var cik CIK
 	require.Error(t, cik.UnmarshalJSON([]byte{}))
 }
 

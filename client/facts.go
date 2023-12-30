@@ -8,7 +8,7 @@ import (
 )
 
 type CompanyFacts struct {
-	CIK        Uint32String                      `json:"cik"`
+	CIK        CIK                               `json:"cik"`
 	EntityName string                            `json:"entityName"`
 	Facts      map[string]map[string]CompanyFact `json:"facts"`
 }
@@ -17,9 +17,9 @@ func (self *CompanyFacts) Id() uint32 {
 	return uint32(self.CIK)
 }
 
-type Uint32String uint32
+type CIK uint32
 
-func (self *Uint32String) UnmarshalJSON(b []byte) error {
+func (self *CIK) UnmarshalJSON(b []byte) error {
 	var value any
 	if err := json.Unmarshal(b, &value); err != nil {
 		return fmt.Errorf("client.Uint32String: %w", err)
@@ -30,7 +30,7 @@ func (self *Uint32String) UnmarshalJSON(b []byte) error {
 		if err != nil {
 			return fmt.Errorf("client.Uint32String: %w", err)
 		}
-		*self = Uint32String(v)
+		*self = CIK(v)
 		return nil
 	}
 
@@ -38,7 +38,7 @@ func (self *Uint32String) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &v); err != nil {
 		return fmt.Errorf("client.Uint32String: %w", err)
 	}
-	*self = Uint32String(v)
+	*self = CIK(v)
 
 	return nil
 }
