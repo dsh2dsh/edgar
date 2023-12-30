@@ -6,6 +6,7 @@ import (
 	dotenv "github.com/dsh2dsh/expx-dotenv"
 	"github.com/spf13/cobra"
 
+	"github.com/dsh2dsh/edgar/cmd/db"
 	"github.com/dsh2dsh/edgar/cmd/download"
 )
 
@@ -18,7 +19,7 @@ var rootCmd = cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(&databaseCmd)
+	rootCmd.AddCommand(&db.Cmd)
 	rootCmd.AddCommand(&download.Cmd)
 }
 

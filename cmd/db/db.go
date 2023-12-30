@@ -1,4 +1,4 @@
-package cmd
+package db
 
 import (
 	"context"
@@ -29,7 +29,7 @@ var (
 	// SchemaSQL contains db/schema.sql via main.go
 	SchemaSQL string
 
-	databaseCmd = cobra.Command{
+	Cmd = cobra.Command{
 		Use:   "db",
 		Short: "Database staff",
 		Long: `All sub-commands require EDGAR_DB_URL environment variable set:
@@ -79,8 +79,8 @@ and initialize it:
 )
 
 func init() {
-	databaseCmd.AddCommand(&initCmd)
-	databaseCmd.AddCommand(&uploadCmd)
+	Cmd.AddCommand(&initCmd)
+	Cmd.AddCommand(&uploadCmd)
 }
 
 func createTables(scheme string) error {
@@ -140,7 +140,7 @@ type Repo interface {
 		labelHash, descrHash uint64) error
 	AddUnit(ctx context.Context, name string) (uint32, error)
 	AddFactUnit(ctx context.Context, fact repo.FactUnit) error
-	CopyFactUnits(ctx context.Context, len int,
+	CopyFactUnits(ctx context.Context, length int,
 		next func(i int) (repo.FactUnit, error)) error
 }
 

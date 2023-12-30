@@ -9,10 +9,12 @@ packages:
     interfaces:
       HttpRequestDoer:
       Limiter:
-  github.com/dsh2dsh/edgar/cmd:
+  github.com/dsh2dsh/edgar/cmd/db:
+    interfaces:
+      Repo:
+  github.com/dsh2dsh/edgar/cmd/download:
     interfaces:
       Storage:
-      Repo:
   github.com/dsh2dsh/edgar/internal/repo:
     interfaces:
       Postgreser:
