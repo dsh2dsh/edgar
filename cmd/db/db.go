@@ -171,9 +171,6 @@ func (self *Upload) Upload() error {
 	log.Printf("%v companies", len(companies))
 
 	for i, company := range companies {
-		if i == 2 { // TODO: remove
-			break
-		}
 		if ctx.Err() != nil {
 			break
 		}
