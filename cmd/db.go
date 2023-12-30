@@ -77,7 +77,6 @@ and initialize it:
 func init() {
 	databaseCmd.AddCommand(&initCmd)
 	databaseCmd.AddCommand(&uploadCmd)
-	rootCmd.AddCommand(&databaseCmd)
 }
 
 func createTables(scheme string) error {

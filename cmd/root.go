@@ -18,6 +18,11 @@ var rootCmd = cobra.Command{
 	},
 }
 
+func init() {
+	rootCmd.AddCommand(&databaseCmd)
+	rootCmd.AddCommand(&downloadCmd)
+}
+
 func Execute() {
 	cobra.CheckErr(rootCmd.Execute())
 }

@@ -53,7 +53,6 @@ var (
 func init() {
 	downloadCmd.Flags().StringVarP(&edgarDataDir, "datadir", "d", "./",
 		"store EDGAR files into this directory")
-	rootCmd.AddCommand(&downloadCmd)
 }
 
 func NewDownload(client *client.Client, st Storage) *Download {
