@@ -22,6 +22,8 @@ type Repo struct {
 type Postgreser interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string,
+		rowSrc pgx.CopyFromSource) (int64, error)
 }
 
 func (self *Repo) AddCompany(ctx context.Context, cik uint32, name string,
@@ -128,6 +130,33 @@ INSERT INTO fact_units (company_cik,  fact_id,   unit_id,
                         @form,        @filed,    @frame)`, fact.NamedArgs())
 	if err != nil {
 		return fmt.Errorf("failed add fact unit: %w", err)
+	}
+	return nil
+}
+
+func (self *Repo) CopyFactUnits(ctx context.Context, len int,
+	next func(i int) (FactUnit, error),
+) error {
+	colNames := []string{
+		"company_cik", "fact_id", "unit_id", "fact_start", "fact_end", "val",
+		"accn", "fy", "fp", "form", "filed", "frame",
+	}
+	n, err := self.db.CopyFrom(ctx, pgx.Identifier{"fact_units"}, colNames,
+		pgx.CopyFromSlice(len, func(i int) ([]any, error) {
+			fact, err := next(i)
+			if err != nil {
+				return nil, err
+			}
+			values := []any{
+				fact.CIK, fact.FactId, fact.UnitId, fact.Start, fact.End, fact.Val,
+				fact.Accn, fact.FY, fact.FP, fact.Form, fact.Filed, fact.Frame,
+			}
+			return values, nil
+		}))
+	if err != nil {
+		return fmt.Errorf("failed copy %v fact units: %w", len, err)
+	} else if n != int64(len) {
+		return fmt.Errorf("copied %v fact units instead of %v", n, len)
 	}
 	return nil
 }

@@ -439,3 +439,75 @@ func (self *RepoTestSuite) TestRepo_AddFactUnit() {
 		})
 	}
 }
+
+func (self *RepoTestSuite) TestRepo_CopyFactUnits() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	unitId := self.addTestUnit(ctx)
+
+	fullFact := FactUnit{
+		CIK:    appleCIK,
+		FactId: factId,
+		UnitId: unitId,
+		End:    time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC),
+		Val:    5520000000,
+		Accn:   "0001193125-09-153165",
+		FY:     2009,
+		FP:     "Q3",
+		Form:   "10-Q",
+		Filed:  time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+	}
+	fullFact.WithStart(time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC)).
+		WithFrame("CY2008Q3I")
+
+	facts := []FactUnit{fullFact, fullFact, fullFact}
+	err := self.repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], nil
+	})
+	self.Require().NoError(err)
+
+	rows, err := self.db.Query(ctx, `SELECT * FROM fact_units`)
+	self.Require().NoError(err)
+	gotFacts, err := pgx.CollectRows(rows, pgx.RowToStructByName[FactUnit])
+	self.Require().NoError(err)
+	self.Equal(facts, gotFacts)
+
+	wantErr := errors.New("test error")
+	err = self.repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], wantErr
+	})
+	self.Require().Error(err)
+}
+
+func TestRepo_CopyFactUnits_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().CopyFrom(ctx, pgx.Identifier{"fact_units"}, mock.Anything,
+		mock.Anything).Return(0, wantErr)
+
+	facts := []FactUnit{{}, {}, {}}
+	err := repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], nil
+	})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_CopyFactUnits_wrongN(t *testing.T) {
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	ctx := context.Background()
+	db.EXPECT().CopyFrom(ctx, pgx.Identifier{"fact_units"}, mock.Anything,
+		mock.Anything).Return(0, nil)
+
+	facts := []FactUnit{{}, {}, {}}
+	err := repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], nil
+	})
+	require.Error(t, err)
+}
