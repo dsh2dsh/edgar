@@ -3,11 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/caarlos0/env/v10"
 	dotenv "github.com/dsh2dsh/expx-dotenv"
 	"github.com/spf13/cobra"
 
-	"github.com/dsh2dsh/edgar/client"
+	"github.com/dsh2dsh/edgar/cmd/download"
 )
 
 var rootCmd = cobra.Command{
@@ -20,7 +19,7 @@ var rootCmd = cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(&databaseCmd)
-	rootCmd.AddCommand(&downloadCmd)
+	rootCmd.AddCommand(&download.Cmd)
 }
 
 func Execute() {
@@ -32,14 +31,4 @@ func loadEnvs() error {
 		return fmt.Errorf("load edgar envs: %w", err)
 	}
 	return nil
-}
-
-func newClient() (*client.Client, error) {
-	cfg := struct {
-		UA string `env:"EDGAR_UA,notEmpty"`
-	}{}
-	if err := env.Parse(&cfg); err != nil {
-		return nil, fmt.Errorf("parse edgar envs: %w", err)
-	}
-	return client.New().WithUserAgent(cfg.UA), nil
 }

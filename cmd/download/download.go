@@ -1,4 +1,4 @@
-package cmd
+package download
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dsh2dsh/edgar/client"
+	"github.com/dsh2dsh/edgar/cmd/internal/common"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 var (
 	edgarDataDir string
 
-	downloadCmd = cobra.Command{
+	Cmd = cobra.Command{
 		Use:   "download index [files...]",
 		Short: "Recursively download files from EDGAR's /Archives/edgar/index",
 		Example: `
@@ -38,7 +39,7 @@ var (
     $ edgar download daily-index`,
 		Args: cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			client, err := newClient()
+			client, err := common.NewClient()
 			cobra.CheckErr(err)
 			d := NewDownload(client, newDownloadDir(edgarDataDir)).
 				WithProcsLimit(downloadProcs)
@@ -51,7 +52,7 @@ var (
 )
 
 func init() {
-	downloadCmd.Flags().StringVarP(&edgarDataDir, "datadir", "d", "./",
+	Cmd.Flags().StringVarP(&edgarDataDir, "datadir", "d", "./",
 		"store EDGAR files into this directory")
 }
 
