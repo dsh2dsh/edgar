@@ -210,8 +210,6 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32) error {
 				if err != nil {
 					return err
 				}
-				log.Printf(`%v facts of CIK=%v, "%v:%v", %q`, len(factUnits),
-					company.CIK, taxName, factName, unitName)
 				err = self.addFactUnits(ctx, company.Id(), factId, unitId, factUnits)
 				if err != nil {
 					return err
@@ -229,7 +227,6 @@ func (self *Upload) companyFacts(ctx context.Context, cik uint32,
 	if err != nil {
 		return facts, fmt.Errorf("facts of CIK=%v: %w", cik, err)
 	}
-	log.Printf("got facts: CIK=%v: %q", facts.CIK, facts.EntityName)
 
 	unknownCompany, err := self.repo.AddCompany(ctx, facts.Id(), facts.EntityName)
 	if err != nil {
@@ -248,8 +245,6 @@ func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 	descrHash := xxhash.Sum64String(descr)
 
 	addLabel := func(factId uint32) error {
-		log.Printf("add label fact %q: label=%#x, descr=%#x", factKey, labelHash,
-			descrHash)
 		err := self.repo.AddLabel(ctx, factId, label, descr, labelHash, descrHash)
 		if err != nil {
 			return fmt.Errorf("failed add label fact %q: %w", factKey, err)
@@ -265,8 +260,6 @@ func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 
 	fact, err := self.knownFacts.Create(factKey, labelHash, descrHash,
 		func() (uint32, error) {
-			log.Printf("add fact %q: label=%#x, descr=%#x", factKey, labelHash,
-				descrHash)
 			factId, err := self.repo.AddFact(ctx, tax, name)
 			if err != nil {
 				return 0, err //nolint:wrapcheck // will wrap below
@@ -281,7 +274,6 @@ func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 
 func (self *Upload) addUnit(ctx context.Context, name string) (uint32, error) {
 	unitId, err := self.knownUnits.Id(ctx, name, func() (uint32, error) {
-		log.Printf("add unit %q", name)
 		//nolint:wrapcheck // will wrap below
 		return self.repo.AddUnit(ctx, name)
 	})
