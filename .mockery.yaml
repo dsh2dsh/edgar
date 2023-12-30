@@ -12,6 +12,7 @@ packages:
   github.com/dsh2dsh/edgar/cmd:
     interfaces:
       Storage:
+      Repo:
   github.com/dsh2dsh/edgar/internal/repo:
     interfaces:
       Postgreser:
