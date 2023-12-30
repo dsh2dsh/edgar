@@ -19,7 +19,7 @@ import (
 
 	"github.com/dsh2dsh/edgar/client"
 	mocksClient "github.com/dsh2dsh/edgar/internal/mocks/client"
-	mocksCmd "github.com/dsh2dsh/edgar/internal/mocks/cmd"
+	mocksDownload "github.com/dsh2dsh/edgar/internal/mocks/download"
 )
 
 func TestDownload_WithProcsLimit(t *testing.T) {
@@ -95,7 +95,7 @@ func TestDownload_readIndex(t *testing.T) {
 					})
 			}
 
-			storage := mocksCmd.NewMockStorage(t)
+			storage := mocksDownload.NewMockStorage(t)
 			d := newTestDownload(t, httpClient, storage)
 
 			index, skip, err := d.readIndex(context.Background(), testPath)
@@ -255,7 +255,7 @@ func TestDownload_downloadFile(t *testing.T) {
 	tests := []struct {
 		name        string
 		httpDo      func(t *testing.T, req *http.Request) (*http.Response, error)
-		mockStorage func(t *testing.T, m *mocksCmd.MockStorage)
+		mockStorage func(t *testing.T, m *mocksDownload.MockStorage)
 		errorIs     error
 	}{
 		{
@@ -263,7 +263,7 @@ func TestDownload_downloadFile(t *testing.T) {
 		},
 		{
 			name: "save error",
-			mockStorage: func(t *testing.T, m *mocksCmd.MockStorage) {
+			mockStorage: func(t *testing.T, m *mocksDownload.MockStorage) {
 				m.EXPECT().Save("edgar/full-index", "master.gz", mock.Anything).
 					RunAndReturn(func(path, fname string, r io.Reader) error {
 						return testErr
@@ -276,7 +276,7 @@ func TestDownload_downloadFile(t *testing.T) {
 			httpDo: func(t *testing.T, req *http.Request) (*http.Response, error) {
 				return nil, testErr
 			},
-			mockStorage: func(t *testing.T, m *mocksCmd.MockStorage) {},
+			mockStorage: func(t *testing.T, m *mocksDownload.MockStorage) {},
 			errorIs:     testErr,
 		},
 	}
@@ -303,7 +303,7 @@ func TestDownload_downloadFile(t *testing.T) {
 			fname := filepath.Base(testFile)
 			var savedBytes []byte
 
-			storage := mocksCmd.NewMockStorage(t)
+			storage := mocksDownload.NewMockStorage(t)
 			if tt.mockStorage != nil {
 				tt.mockStorage(t, storage)
 			} else {
