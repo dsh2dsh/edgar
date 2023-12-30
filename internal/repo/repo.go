@@ -134,7 +134,7 @@ INSERT INTO fact_units (company_cik,  fact_id,   unit_id,
 	return nil
 }
 
-func (self *Repo) CopyFactUnits(ctx context.Context, len int,
+func (self *Repo) CopyFactUnits(ctx context.Context, length int,
 	next func(i int) (FactUnit, error),
 ) error {
 	colNames := []string{
@@ -142,7 +142,7 @@ func (self *Repo) CopyFactUnits(ctx context.Context, len int,
 		"accn", "fy", "fp", "form", "filed", "frame",
 	}
 	n, err := self.db.CopyFrom(ctx, pgx.Identifier{"fact_units"}, colNames,
-		pgx.CopyFromSlice(len, func(i int) ([]any, error) {
+		pgx.CopyFromSlice(length, func(i int) ([]any, error) {
 			fact, err := next(i)
 			if err != nil {
 				return nil, err
@@ -154,9 +154,9 @@ func (self *Repo) CopyFactUnits(ctx context.Context, len int,
 			return values, nil
 		}))
 	if err != nil {
-		return fmt.Errorf("failed copy %v fact units: %w", len, err)
-	} else if n != int64(len) {
-		return fmt.Errorf("copied %v fact units instead of %v", n, len)
+		return fmt.Errorf("failed copy %v fact units: %w", length, err)
+	} else if n != int64(length) {
+		return fmt.Errorf("copied %v fact units instead of %v", n, length)
 	}
 	return nil
 }
