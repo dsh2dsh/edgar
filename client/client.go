@@ -1,3 +1,11 @@
+// Package client implements API access to EDGAR data. It's rate limited, as
+// required by [1], and uses User-Agent. Don't forget set correct User-Agent
+// using WithUserAgent().
+//
+// Also see [2] for details.
+//
+// [1]: https://www.sec.gov/os/accessing-edgar-data
+// [2]: https://www.sec.gov/edgar/sec-api-documentation
 package client
 
 import (
