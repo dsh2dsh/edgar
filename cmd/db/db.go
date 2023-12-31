@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 
 	"github.com/caarlos0/env/v10"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,7 +63,8 @@ and initialize it:
 			edgar, err := common.NewClient()
 			cobra.CheckErr(err)
 
-			uploader := NewUpload(edgar, repo.New(db)).WithProcsLimit(uploadProcs)
+			uploader := NewUpload(edgar, repo.New(db)).
+				WithLogger(slog.Default()).WithProcsLimit(uploadProcs)
 			cobra.CheckErr(uploader.Upload())
 		},
 	}

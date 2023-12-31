@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -40,8 +40,9 @@ type Repo interface {
 }
 
 type Upload struct {
-	edgar *client.Client
-	repo  Repo
+	edgar  *client.Client
+	logger *slog.Logger
+	repo   Repo
 
 	knownFacts facts
 	knownUnits factUnits
@@ -49,30 +50,48 @@ type Upload struct {
 	procs int
 }
 
+func (self *Upload) WithLogger(l *slog.Logger) *Upload {
+	self.logger = l
+	return self
+}
+
 func (self *Upload) WithProcsLimit(n int) *Upload {
 	self.procs = n
 	return self
+}
+
+func (self *Upload) log(ctx context.Context) *slog.Logger {
+	if l := ContextLogger(ctx, nil); l != nil {
+		return l
+	} else if self.logger == nil {
+		return slog.Default()
+	}
+	return self.logger
 }
 
 func (self *Upload) Upload() error {
 	g, ctx := errgroup.WithContext(context.Background())
 	g.SetLimit(self.procs)
 
-	log.Println("fetch companies")
+	self.log(ctx).Info("fetch company tickers")
 	companies, err := self.edgar.CompanyTickers(ctx)
 	if err != nil {
 		return fmt.Errorf("fetch companies: %w", err)
 	}
-	log.Printf("%v companies", len(companies))
+	self.log(ctx).Info("fetched tickers", slog.Int("length", len(companies)))
 
 	for i, company := range companies {
 		if ctx.Err() != nil {
 			break
 		}
 		cik := company.CIK
-		log.Printf("%v/%v: company CIK=%v %q: %q", i+1, len(companies), cik,
-			company.Ticker, company.Title)
-		g.Go(func() error { return self.processCompanyFacts(ctx, cik) })
+		l := self.log(ctx).With(
+			slog.String("progress", fmt.Sprintf("%v/%v", i+1, len(companies))),
+			slog.Uint64("CIK", uint64(cik)), slog.String("ticker", company.Ticker))
+		l.Info("process company", slog.String("title", company.Title))
+		g.Go(func() error {
+			return self.processCompanyFacts(ContextWithLogger(ctx, l), cik)
+		})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -86,7 +105,7 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32) error {
 	if err != nil {
 		var status *client.UnexpectedStatusError
 		if errors.As(err, &status) && status.StatusCode() == http.StatusNotFound {
-			log.Printf("skip company: %s", err)
+			self.log(ctx).Info("skip company", slog.Any("cause", err))
 			return nil
 		}
 		return err
@@ -127,7 +146,8 @@ func (self *Upload) companyFacts(ctx context.Context, cik uint32,
 	if err != nil {
 		return facts, fmt.Errorf("companyFacts: %w", err)
 	} else if unknownCompany {
-		log.Printf("add company: CIK=%v %q", facts.CIK, facts.EntityName)
+		self.log(ctx).Info("add company", slog.Uint64("CIK", uint64(facts.CIK)),
+			slog.String("entityName", facts.EntityName))
 	}
 
 	return facts, nil
