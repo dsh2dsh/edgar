@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -72,7 +73,7 @@ func (self *Client) applyOptions(opts ...ClientOption) *Client {
 	}
 
 	if self.client == nil {
-		self.client = &http.Client{}
+		self.client = &http.Client{Timeout: 5 * time.Second}
 	}
 
 	if self.limiter == nil {
