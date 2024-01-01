@@ -1,11 +1,13 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +39,7 @@ type Repo interface {
 	AddFactUnit(ctx context.Context, fact repo.FactUnit) error
 	CopyFactUnits(ctx context.Context, length int,
 		next func(i int) (repo.FactUnit, error)) error
+	LastFiled(ctx context.Context) (map[uint32]time.Time, error)
 }
 
 type Upload struct {
@@ -46,6 +49,7 @@ type Upload struct {
 
 	knownFacts facts
 	knownUnits factUnits
+	lastFiled  map[uint32]time.Time
 
 	procs int
 }
@@ -70,29 +74,23 @@ func (self *Upload) log(ctx context.Context) *slog.Logger {
 }
 
 func (self *Upload) Upload() error {
-	g, ctx := errgroup.WithContext(context.Background())
+	ctx := context.Background()
+	companies, err := self.companies(ctx)
+	if err != nil {
+		return err
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(self.procs)
 
-	self.log(ctx).Info("fetch company tickers")
-	companies, err := self.edgar.CompanyTickers(ctx)
-	if err != nil {
-		return fmt.Errorf("fetch companies: %w", err)
-	}
-	self.log(ctx).Info("fetched tickers", slog.Int("length", len(companies)))
-
-	for i, company := range companies {
-		if ctx.Err() != nil {
-			break
-		}
-		cik := company.CIK
-		l := self.log(ctx).With(
-			slog.String("progress", fmt.Sprintf("%v/%v", i+1, len(companies))),
-			slog.Uint64("CIK", uint64(cik)), slog.String("ticker", company.Ticker))
-		l.Info("process company", slog.String("title", company.Title))
-		g.Go(func() error {
-			return self.processCompanyFacts(ContextWithLogger(ctx, l), cik)
+	self.iterateCompanies(ctx, companies,
+		func(ctx context.Context, company client.CompanyTicker) {
+			cik, title := company.CIK, company.Title
+			l := self.log(ctx).With(slog.Uint64("CIK", uint64(cik)),
+				slog.String("ticker", company.Ticker))
+			ctx = ContextWithLogger(ctx, l)
+			g.Go(func() error { return self.processCompanyFacts(ctx, cik, title) })
 		})
-	}
 
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("upload facts: %w", err)
@@ -100,31 +98,94 @@ func (self *Upload) Upload() error {
 	return nil
 }
 
-func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32) error {
-	company, err := self.companyFacts(ctx, cik)
-	if err != nil {
-		var status *client.UnexpectedStatusError
-		if errors.As(err, &status) && status.StatusCode() == http.StatusNotFound {
-			self.log(ctx).Info("skip company", slog.Any("cause", err))
-			return nil
-		}
-		return err
+func (self *Upload) iterateCompanies(ctx context.Context,
+	companies []client.CompanyTicker,
+	fn func(context.Context, client.CompanyTicker),
+) {
+	startIdx := slices.IndexFunc(companies,
+		func(c client.CompanyTicker) bool { return !self.loadedCompany(c.CIK) })
+	if startIdx < 0 {
+		startIdx = 0
+	} else if startIdx > 0 {
+		self.log(ctx).Info("skip loaded companies", slog.Int("skipped", startIdx))
 	}
 
-	for taxName, facts := range company.Facts {
+	for i := startIdx; i < len(companies); i++ {
+		if ctx.Err() != nil {
+			return
+		}
+		l := self.log(ctx).With(slog.String("progress", fmt.Sprintf("%v/%v", i+1,
+			len(companies))))
+		fn(ContextWithLogger(ctx, l), companies[i])
+	}
+}
+
+func (self *Upload) loadedCompany(cik uint32) bool {
+	_, ok := self.lastFiled[cik]
+	return ok
+}
+
+func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, error) {
+	self.log(ctx).Info("preload last filed companies")
+	if lastFiled, err := self.repo.LastFiled(ctx); err != nil {
+		return nil, fmt.Errorf("preload last filed: %w", err)
+	} else {
+		self.lastFiled = lastFiled
+	}
+
+	self.log(ctx).Info("fetch company tickers")
+	companies, err := self.edgar.CompanyTickers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetch company tickers: %w", err)
+	}
+	self.log(ctx).Info("fetched tickers", slog.Int("length", len(companies)))
+	return self.sortCompanies(companies), nil
+}
+
+func (self *Upload) sortCompanies(companies []client.CompanyTicker,
+) []client.CompanyTicker {
+	slices.SortFunc(companies, func(a, b client.CompanyTicker) int {
+		switch {
+		case self.loadedCompany(a.CIK) && self.loadedCompany(b.CIK):
+			return cmp.Compare(a.CIK, b.CIK)
+		case !self.loadedCompany(a.CIK) && !self.loadedCompany(b.CIK):
+			return cmp.Compare(a.CIK, b.CIK)
+		case !self.loadedCompany(b.CIK):
+			return -1
+		}
+		return 1
+	})
+	return companies
+}
+
+func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
+	title string,
+) error {
+	self.log(ctx).Info("fetch company facts", slog.String("title", title))
+	companyFacts, err := self.companyFacts(ctx, cik, title)
+	if err != nil {
+		return err
+	} else if companyFacts == nil {
+		return nil
+	}
+
+	if true { // TODO: remove
+		return nil
+	}
+
+	for taxName, facts := range companyFacts {
 		for factName, fact := range facts {
 			factId, err := self.addFact(ctx, taxName, factName, fact.Label,
 				fact.Description)
 			if err != nil {
-				return fmt.Errorf("processCompanyFacts: company CIK=%v: %w",
-					company.CIK, err)
+				return fmt.Errorf("processCompanyFacts: company CIK=%v: %w", cik, err)
 			}
 			for unitName, factUnits := range fact.Units {
 				unitId, err := self.addUnit(ctx, unitName)
 				if err != nil {
 					return err
 				}
-				err = self.addFactUnits(ctx, company.Id(), factId, unitId, factUnits)
+				err = self.addFactUnits(ctx, cik, factId, unitId, factUnits)
 				if err != nil {
 					return err
 				}
@@ -135,22 +196,78 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32) error {
 	return nil
 }
 
-func (self *Upload) companyFacts(ctx context.Context, cik uint32,
-) (client.CompanyFacts, error) {
-	facts, err := self.edgar.CompanyFacts(ctx, cik)
+func (self *Upload) companyFacts(ctx context.Context, cik uint32, title string,
+) (map[string]map[string]client.CompanyFact, error) {
+	facts, err := self.retryCompanyFacts(ctx, 2, cik)
 	if err != nil {
-		return facts, fmt.Errorf("facts of CIK=%v: %w", cik, err)
+		var s *client.UnexpectedStatusError
+		if errors.As(err, &s) && s.StatusCode() == http.StatusNotFound {
+			self.log(ctx).Info("skip company", slog.Any("cause", err))
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	unknownCompany, err := self.repo.AddCompany(ctx, facts.Id(), facts.EntityName)
+	if facts.EntityName == "" {
+		self.log(ctx).LogAttrs(ctx, slog.LevelWarn, "empty entityName",
+			slog.String("title", title))
+	} else {
+		title = facts.EntityName
+	}
+
+	if facts.Id() != cik {
+		self.log(ctx).LogAttrs(ctx, slog.LevelWarn, "wrong cik",
+			slog.Uint64("cik", uint64(facts.Id())))
+	}
+
+	unknownCompany, err := self.repo.AddCompany(ctx, cik, title)
 	if err != nil {
-		return facts, fmt.Errorf("companyFacts: %w", err)
+		return nil, fmt.Errorf("companyFacts: %w", err)
 	} else if unknownCompany {
-		self.log(ctx).Info("add company", slog.Uint64("CIK", uint64(facts.CIK)),
-			slog.String("entityName", facts.EntityName))
+		self.log(ctx).Info("add company")
 	}
 
-	return facts, nil
+	return facts.Facts, nil
+}
+
+func (self *Upload) retryCompanyFacts(ctx context.Context, tries int, cik uint32,
+) (facts client.CompanyFacts, err error) {
+	var skipErr error
+	ok, err := self.retryFunc(ctx, tries,
+		func(ctx context.Context, i int) (bool, error) {
+			if facts, err = self.edgar.CompanyFacts(ctx, cik); err == nil {
+				return true, nil
+			}
+			var s *client.UnexpectedStatusError
+			if errors.As(err, &s) && s.StatusCode() == http.StatusGatewayTimeout {
+				self.log(ctx).Info("retry company facts", slog.Any("cause", err))
+				skipErr = err
+				return false, nil
+			}
+			return false, fmt.Errorf(
+				"failed fetch company facts (CIK=%v): %w", cik, err)
+		})
+	if err == nil && !ok {
+		err = fmt.Errorf("tried may times fetch company facts: %w", skipErr)
+	}
+	return
+}
+
+func (self *Upload) retryFunc(ctx context.Context, max int,
+	fn func(ctx context.Context, i int) (bool, error),
+) (bool, error) {
+	for i := 0; i < max; i++ {
+		if ctx.Err() != nil {
+			return false, fmt.Errorf("stop retrying: %w", ctx.Err())
+		}
+		l := self.log(ctx).With(slog.Int("try", i+1))
+		if ok, err := fn(ContextWithLogger(ctx, l), i); err != nil {
+			return false, err
+		} else if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
