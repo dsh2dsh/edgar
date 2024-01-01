@@ -513,3 +513,72 @@ func TestRepo_CopyFactUnits_wrongN(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func (self *RepoTestSuite) TestRepo_LastFiled() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	unitId := self.addTestUnit(ctx)
+
+	fullFact := FactUnit{
+		CIK:    appleCIK,
+		FactId: factId,
+		UnitId: unitId,
+		End:    time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC),
+		Val:    5520000000,
+		Accn:   "0001193125-09-153165",
+		FY:     2009,
+		FP:     "Q3",
+		Form:   "10-Q",
+		Filed:  time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+	}
+
+	filed := []time.Time{
+		time.Date(2009, 7, 20, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 15, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 18, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 4, 0, 0, 0, 0, time.UTC),
+	}
+	facts := make([]FactUnit, len(filed))
+	for i := range filed {
+		facts[i] = fullFact
+		facts[i].Filed = filed[i]
+	}
+
+	err := self.repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], nil
+	})
+	self.Require().NoError(err)
+
+	lastFiled, err := self.repo.LastFiled(ctx)
+	self.Require().NoError(err)
+	self.Len(lastFiled, 1)
+	self.Equal(time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC), lastFiled[appleCIK])
+
+	m := mocks.NewMockPostgreser(self.T())
+	m.EXPECT().Query(ctx, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err
+		})
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+
+	_, err = self.repo.LastFiled(ctx)
+	self.Require().Error(err)
+}
+
+func TestRepo_LastFiled_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().Query(ctx, mock.Anything).Return(nil, wantErr).Once()
+
+	lastFiled, err := repo.LastFiled(ctx)
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, lastFiled)
+}

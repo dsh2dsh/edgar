@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -157,4 +158,31 @@ func (self *Repo) CopyFactUnits(ctx context.Context, length int,
 		return fmt.Errorf("copied %v fact units instead of %v", n, length)
 	}
 	return nil
+}
+
+func (self *Repo) LastFiled(ctx context.Context) (map[uint32]time.Time, error) {
+	rows, err := self.db.Query(ctx, `
+SELECT company_cik, MAX(filed) AS last_filed
+  FROM fact_units GROUP BY company_cik`)
+	if err != nil {
+		return nil, fmt.Errorf("repo.LastFiled: %w", err)
+	}
+
+	type lastFiled struct {
+		CIK   uint32    `db:"company_cik"`
+		Filed time.Time `db:"last_filed"`
+	}
+
+	cikFiled, err := pgx.CollectRows(rows, pgx.RowToStructByName[lastFiled])
+	if err != nil {
+		return nil, fmt.Errorf("repo.LastFiled: %w", err)
+	}
+
+	filedByCIK := make(map[uint32]time.Time, len(cikFiled))
+	for i := range cikFiled {
+		item := &cikFiled[i]
+		filedByCIK[item.CIK] = item.Filed
+	}
+
+	return filedByCIK, nil
 }
