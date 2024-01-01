@@ -46,3 +46,5 @@ CREATE TABLE fact_units (
   filed       DATE    NOT NULL,
   frame       TEXT
 );
+
+CREATE INDEX ON fact_units (company_cik, filed);

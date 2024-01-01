@@ -107,7 +107,9 @@ CREATE TEMPORARY TABLE fact_units (
   form        TEXT    NOT NULL,
   filed       DATE    NOT NULL,
   frame       TEXT
-)`)
+);
+
+CREATE INDEX ON fact_units (company_cik, filed);`)
 	self.Require().NoError(err)
 }
 
