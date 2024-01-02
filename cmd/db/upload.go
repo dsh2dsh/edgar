@@ -138,10 +138,11 @@ func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, erro
 		return nil, fmt.Errorf("fetch company tickers: %w", err)
 	}
 	self.log(ctx).Info("fetched tickers", slog.Int("length", len(companies)))
-	return self.sortCompanies(companies), nil
+	return self.sortCompanies(ctx, companies), nil
 }
 
-func (self *Upload) sortCompanies(companies []client.CompanyTicker,
+func (self *Upload) sortCompanies(ctx context.Context,
+	companies []client.CompanyTicker,
 ) []client.CompanyTicker {
 	slices.SortFunc(companies, func(a, b client.CompanyTicker) int {
 		switch {
@@ -154,7 +155,15 @@ func (self *Upload) sortCompanies(companies []client.CompanyTicker,
 		}
 		return 1
 	})
-	return companies
+
+	uniqCompanies := slices.CompactFunc(companies,
+		func(a, b client.CompanyTicker) bool { return a.CIK == b.CIK })
+	if len(uniqCompanies) < len(companies) {
+		self.log(ctx).Info("compactified tickers",
+			slog.Int("before", len(companies)), slog.Int("after", len(uniqCompanies)))
+	}
+
+	return uniqCompanies
 }
 
 func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
