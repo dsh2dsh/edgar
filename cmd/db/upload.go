@@ -86,8 +86,7 @@ func (self *Upload) Upload() error {
 	self.iterateCompanies(ctx, companies,
 		func(ctx context.Context, company client.CompanyTicker) {
 			cik, title := company.CIK, company.Title
-			l := self.log(ctx).With(slog.Uint64("CIK", uint64(cik)),
-				slog.String("ticker", company.Ticker))
+			l := self.log(ctx).With(slog.Uint64("CIK", uint64(cik)))
 			ctx = ContextWithLogger(ctx, l)
 			g.Go(func() error { return self.processCompanyFacts(ctx, cik, title) })
 		})
