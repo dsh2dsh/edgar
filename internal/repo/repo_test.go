@@ -28,6 +28,9 @@ const (
 	factTax  = "us-gaap"
 	factName = "AccountsPayable"
 
+	factLabel = "Accounts Payable (Deprecated 2009-01-31)"
+	factDescr = "Carrying value as of the balance sheet date of liabilities incurred (and for which invoices have typically been received) and payable to vendors for goods and services received that are used in an entity's business. For classified balance sheets, used to reflect the current portion of the liabilities (due within one year or within the normal operating cycle if longer); for unclassified balance sheets, used to reflect the total liabilities (regardless of due date)."
+
 	unitName = "USD"
 )
 
@@ -231,19 +234,11 @@ func TestRepo_AddFact_error(t *testing.T) {
 }
 
 func (self *RepoTestSuite) TestRepo_AddLabel() {
-	const label = "Accounts Payable (Deprecated 2009-01-31)"
-	const descr = "Carrying value as of the balance sheet date of liabilities incurred (and for which invoices have typically been received) and payable to vendors for goods and services received that are used in an entity's business. For classified balance sheets, used to reflect the current portion of the liabilities (due within one year or within the normal operating cycle if longer); for unclassified balance sheets, used to reflect the total liabilities (regardless of due date)."
-
 	ctx := context.Background()
 	factId := self.addTestFact(ctx)
-
-	labelHash := xxhash.Sum64String(label)
+	labelHash, descrHash := self.addTestLabel(factId)
 	self.T().Logf("labelHash: %#x", labelHash)
-	descrHash := xxhash.Sum64String(descr)
 	self.T().Logf("descrHash: %#x", descrHash)
-
-	self.Require().NoError(self.repo.AddLabel(
-		ctx, factId, label, descr, labelHash, descrHash))
 
 	rows, err := self.db.Query(ctx,
 		`SELECT xxhash1, xxhash2 FROM fact_labels WHERE fact_id = $1`, factId)
@@ -264,12 +259,20 @@ func (self *RepoTestSuite) TestRepo_AddLabel() {
 	// ERROR: duplicate key value violates unique constraint
 	// "fact_labels_fact_id_xxhash1_xxhash2_key" (SQLSTATE 23505)
 	self.Require().NoError(self.repo.AddLabel(
-		ctx, factId, label, descr, labelHash, descrHash))
+		ctx, factId, factLabel, factDescr, labelHash, descrHash))
 
 	// ERROR: insert or update on table "fact_labels" violates foreign key
 	// constraint "fact_labels_fact_id_fkey" (SQLSTATE 23503)
 	self.Require().Error(self.repo.AddLabel(
-		ctx, 0, label, descr, labelHash, descrHash))
+		ctx, 0, factLabel, factDescr, labelHash, descrHash))
+}
+
+func (self *RepoTestSuite) addTestLabel(factId uint32) (uint64, uint64) {
+	labelHash := xxhash.Sum64String(factLabel)
+	descrHash := xxhash.Sum64String(factDescr)
+	self.Require().NoError(self.repo.AddLabel(
+		context.Background(), factId, factLabel, factDescr, labelHash, descrHash))
+	return labelHash, descrHash
 }
 
 func (self *RepoTestSuite) TestRepo_AddUnit() {
@@ -581,4 +584,57 @@ func TestRepo_LastFiled_error(t *testing.T) {
 	lastFiled, err := repo.LastFiled(ctx)
 	require.ErrorIs(t, err, wantErr)
 	assert.Nil(t, lastFiled)
+}
+
+func (self *RepoTestSuite) TestRepo_FactLabels() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	labelHash, descrHash := self.addTestLabel(factId)
+
+	factLabels, err := self.repo.FactLabels(ctx)
+	self.Require().NoError(err)
+	self.Len(factLabels, 1)
+
+	rows, err := self.db.Query(ctx,
+		`SELECT id FROM fact_labels WHERE fact_id = $1`, factId)
+	self.Require().NoError(err)
+	labelId, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[uint32])
+	self.Require().NoError(err)
+
+	testFact := FactLabels{
+		FactId:    factId,
+		FactTax:   factTax,
+		FactName:  factName,
+		LabelId:   labelId,
+		LabelHash: labelHash,
+		DescrHash: descrHash,
+	}
+	self.Equal([]FactLabels{testFact}, factLabels)
+
+	m := mocks.NewMockPostgreser(self.T())
+	m.EXPECT().Query(ctx, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err
+		})
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+
+	_, err = self.repo.FactLabels(ctx)
+	self.Require().Error(err)
+}
+
+func TestRepo_FactLabels_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().Query(ctx, mock.Anything).Return(nil, wantErr).Once()
+
+	factLabels, err := repo.FactLabels(ctx)
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, factLabels)
 }

@@ -186,3 +186,20 @@ SELECT company_cik, MAX(filed) AS last_filed
 
 	return filedByCIK, nil
 }
+
+func (self *Repo) FactLabels(ctx context.Context) ([]FactLabels, error) {
+	rows, err := self.db.Query(ctx, `
+SELECT facts.id AS fact_id, fact_tax, fact_name,
+       fact_labels.id AS label_id, xxhash1, xxhash2
+  FROM facts, fact_labels WHERE facts.id = fact_labels.fact_id`)
+	if err != nil {
+		return nil, fmt.Errorf("repo.FactLabels: %w", err)
+	}
+
+	facts, err := pgx.CollectRows(rows, pgx.RowToStructByName[FactLabels])
+	if err != nil {
+		return nil, fmt.Errorf("repo.FactLabels: %w", err)
+	}
+
+	return facts, nil
+}

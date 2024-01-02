@@ -21,7 +21,9 @@ func TestFacts_Fact(t *testing.T) {
 		{
 			name: "Fact hit",
 			assertCall: func(t *testing.T, facts *facts) (*knownFact, error) {
+				assert.Equal(t, 0, facts.Len())
 				facts.knownFacts[factKey] = newKnownFact(0, 1, 1)
+				assert.Equal(t, 1, facts.Len())
 				fact, ok := facts.Fact(factKey)
 				assert.True(t, ok)
 				return fact, nil
@@ -31,6 +33,7 @@ func TestFacts_Fact(t *testing.T) {
 		{
 			name: "Fact miss",
 			assertCall: func(t *testing.T, facts *facts) (*knownFact, error) {
+				assert.Equal(t, 0, facts.Len())
 				fact, ok := facts.Fact(factKey)
 				assert.False(t, ok)
 				return fact, nil
@@ -127,6 +130,49 @@ func TestFacts_Create(t *testing.T) {
 	}
 }
 
+func TestFacts_Preload(t *testing.T) {
+	const factKey = "us-gaap:AccountsPayable"
+
+	tests := []struct {
+		name        string
+		assertCall  func(t *testing.T, facts *facts) bool
+		unknownFact bool
+		wantFacts   func() map[string]*knownFact
+	}{
+		{
+			name: "new fact",
+			assertCall: func(t *testing.T, facts *facts) bool {
+				return facts.Preload(1, factKey, 2, 2)
+			},
+			unknownFact: true,
+			wantFacts: func() map[string]*knownFact {
+				return map[string]*knownFact{factKey: newKnownFact(1, 2, 2)}
+			},
+		},
+		{
+			name: "more labels",
+			assertCall: func(t *testing.T, facts *facts) bool {
+				facts.knownFacts[factKey] = newKnownFact(1, 2, 2)
+				return facts.Preload(1, factKey, 2, 3)
+			},
+			wantFacts: func() map[string]*knownFact {
+				fact := newKnownFact(1, 2, 2)
+				fact.AddMoreLabel(2, 3)
+				return map[string]*knownFact{factKey: fact}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			facts := newFacts()
+			unknownFact := tt.assertCall(t, &facts)
+			assert.Equal(t, tt.unknownFact, unknownFact)
+			assert.Equal(t, tt.wantFacts(), facts.knownFacts)
+		})
+	}
+}
+
 func TestKnownFact_AddLabel(t *testing.T) {
 	callbackCalled := func(t *testing.T, err error) func() error {
 		var called bool
@@ -144,9 +190,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 		}
 	}
 
-	ctx := context.Background()
 	wantErr := errors.New("test error")
-
 	tests := []struct {
 		name       string
 		assertCall func(t *testing.T, fact *knownFact) error
@@ -156,7 +200,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 		{
 			name: "direct hit",
 			assertCall: func(t *testing.T, fact *knownFact) error {
-				return fact.AddLabel(ctx, 1, 1, callbackNotCalled(t))
+				return fact.AddLabel(1, 1, callbackNotCalled(t))
 			},
 			wantFact: &knownFact{LabelHash: 1, DescrHash: 1},
 		},
@@ -164,7 +208,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 			name: "moreLabels",
 			assertCall: func(t *testing.T, fact *knownFact) error {
 				fact.moreLabels = map[uint64]map[uint64]struct{}{2: {2: {}}}
-				return fact.AddLabel(ctx, 2, 2, callbackNotCalled(t))
+				return fact.AddLabel(2, 2, callbackNotCalled(t))
 			},
 			wantFact: &knownFact{
 				LabelHash:  1,
@@ -175,7 +219,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 		{
 			name: "with callback",
 			assertCall: func(t *testing.T, fact *knownFact) error {
-				return fact.AddLabel(ctx, 2, 2, callbackCalled(t, nil))
+				return fact.AddLabel(2, 2, callbackCalled(t, nil))
 			},
 			wantFact: &knownFact{
 				LabelHash:  1,
@@ -186,7 +230,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 		{
 			name: "with callback error",
 			assertCall: func(t *testing.T, fact *knownFact) error {
-				return fact.AddLabel(ctx, 2, 2, callbackCalled(t, wantErr))
+				return fact.AddLabel(2, 2, callbackCalled(t, wantErr))
 			},
 			errorIs:  wantErr,
 			wantFact: &knownFact{LabelHash: 1, DescrHash: 1},
@@ -195,7 +239,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 			name: "added into moreLabels 1",
 			assertCall: func(t *testing.T, fact *knownFact) error {
 				fact.moreLabels = map[uint64]map[uint64]struct{}{}
-				return fact.AddLabel(ctx, 2, 2, callbackCalled(t, nil))
+				return fact.AddLabel(2, 2, callbackCalled(t, nil))
 			},
 			wantFact: &knownFact{
 				LabelHash:  1,
@@ -207,7 +251,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 			name: "added into moreLabels 2",
 			assertCall: func(t *testing.T, fact *knownFact) error {
 				fact.moreLabels = map[uint64]map[uint64]struct{}{2: {2: {}}}
-				return fact.AddLabel(ctx, 2, 3, callbackCalled(t, nil))
+				return fact.AddLabel(2, 3, callbackCalled(t, nil))
 			},
 			wantFact: &knownFact{
 				LabelHash:  1,
@@ -220,10 +264,10 @@ func TestKnownFact_AddLabel(t *testing.T) {
 			assertCall: func(t *testing.T, fact *knownFact) error {
 				sig := make(chan struct{})
 				done := make(chan struct{})
-				err := fact.AddLabel(ctx, 2, 2, func() error {
+				err := fact.AddLabel(2, 2, func() error {
 					go func() {
 						close(sig)
-						err := fact.AddLabel(ctx, 2, 3, callbackCalled(t, nil))
+						err := fact.AddLabel(2, 3, callbackCalled(t, nil))
 						require.NoError(t, err)
 						close(done)
 					}()
@@ -250,6 +294,71 @@ func TestKnownFact_AddLabel(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+			assert.Equal(t, tt.wantFact, fact)
+		})
+	}
+}
+
+func TestKnownFact_AddMoreLabel(t *testing.T) {
+	tests := []struct {
+		name       string
+		assertCall func(t *testing.T, fact *knownFact)
+		errorIs    error
+		wantFact   *knownFact
+	}{
+		{
+			name: "moreLabels",
+			assertCall: func(t *testing.T, fact *knownFact) {
+				fact.moreLabels = map[uint64]map[uint64]struct{}{2: {2: {}}}
+				fact.AddMoreLabel(2, 2)
+			},
+			wantFact: &knownFact{
+				LabelHash:  1,
+				DescrHash:  1,
+				moreLabels: map[uint64]map[uint64]struct{}{2: {2: {}}},
+			},
+		},
+		{
+			name: "added into moreLabels",
+			assertCall: func(t *testing.T, fact *knownFact) {
+				fact.AddMoreLabel(2, 2)
+			},
+			wantFact: &knownFact{
+				LabelHash:  1,
+				DescrHash:  1,
+				moreLabels: map[uint64]map[uint64]struct{}{2: {2: {}}},
+			},
+		},
+		{
+			name: "added into moreLabels 1",
+			assertCall: func(t *testing.T, fact *knownFact) {
+				fact.moreLabels = map[uint64]map[uint64]struct{}{}
+				fact.AddMoreLabel(2, 2)
+			},
+			wantFact: &knownFact{
+				LabelHash:  1,
+				DescrHash:  1,
+				moreLabels: map[uint64]map[uint64]struct{}{2: {2: {}}},
+			},
+		},
+		{
+			name: "added into moreLabels 2",
+			assertCall: func(t *testing.T, fact *knownFact) {
+				fact.moreLabels = map[uint64]map[uint64]struct{}{2: {2: {}}}
+				fact.AddMoreLabel(2, 3)
+			},
+			wantFact: &knownFact{
+				LabelHash:  1,
+				DescrHash:  1,
+				moreLabels: map[uint64]map[uint64]struct{}{2: {2: {}, 3: {}}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fact := newKnownFact(0, 1, 1)
+			tt.assertCall(t, fact)
 			assert.Equal(t, tt.wantFact, fact)
 		})
 	}

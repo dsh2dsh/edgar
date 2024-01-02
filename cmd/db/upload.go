@@ -40,6 +40,7 @@ type Repo interface {
 	CopyFactUnits(ctx context.Context, length int,
 		next func(i int) (repo.FactUnit, error)) error
 	LastFiled(ctx context.Context) (map[uint32]time.Time, error)
+	FactLabels(ctx context.Context) ([]repo.FactLabels, error)
 }
 
 type Upload struct {
@@ -75,6 +76,10 @@ func (self *Upload) log(ctx context.Context) *slog.Logger {
 
 func (self *Upload) Upload() error {
 	ctx := context.Background()
+	if err := self.preloadFacts(ctx); err != nil {
+		return err
+	}
+
 	companies, err := self.companies(ctx)
 	if err != nil {
 		return err
@@ -97,31 +102,26 @@ func (self *Upload) Upload() error {
 	return nil
 }
 
-func (self *Upload) iterateCompanies(ctx context.Context,
-	companies []client.CompanyTicker,
-	fn func(context.Context, client.CompanyTicker),
-) {
-	startIdx := slices.IndexFunc(companies,
-		func(c client.CompanyTicker) bool { return !self.loadedCompany(c.CIK) })
-	if startIdx < 0 {
-		startIdx = 0
-	} else if startIdx > 0 {
-		self.log(ctx).Info("skip loaded companies", slog.Int("skipped", startIdx))
+func (self *Upload) preloadFacts(ctx context.Context) error {
+	slog.Info("preload facts and labels")
+	factLabels, err := self.repo.FactLabels(ctx)
+	if err != nil {
+		return fmt.Errorf("preload facts and labels: %w", err)
 	}
 
-	for i := startIdx; i < len(companies); i++ {
-		if ctx.Err() != nil {
-			return
+	var extraLabelsCnt int
+	for i := range factLabels {
+		item := &factLabels[i]
+		factKey := self.makeFactKey(item.FactTax, item.FactName)
+		unknownFact := self.knownFacts.Preload(item.FactId, factKey, item.LabelHash,
+			item.DescrHash)
+		if !unknownFact {
+			extraLabelsCnt++
 		}
-		l := self.log(ctx).With(slog.String("progress", fmt.Sprintf("%v/%v", i+1,
-			len(companies))))
-		fn(ContextWithLogger(ctx, l), companies[i])
 	}
-}
-
-func (self *Upload) loadedCompany(cik uint32) bool {
-	_, ok := self.lastFiled[cik]
-	return ok
+	slog.Info("preloaded facts and labels",
+		slog.Int("len", self.knownFacts.Len()), slog.Int("extra", extraLabelsCnt))
+	return nil
 }
 
 func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, error) {
@@ -131,6 +131,8 @@ func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, erro
 	} else {
 		self.lastFiled = lastFiled
 	}
+	slog.Info("preloaded last filed companies",
+		slog.Int("len", len(self.lastFiled)))
 
 	self.log(ctx).Info("fetch company tickers")
 	companies, err := self.edgar.CompanyTickers(ctx)
@@ -164,6 +166,37 @@ func (self *Upload) sortCompanies(ctx context.Context,
 	}
 
 	return uniqCompanies
+}
+
+func (self *Upload) makeFactKey(tax, name string) string {
+	return strings.Join([]string{tax, name}, ":")
+}
+
+func (self *Upload) iterateCompanies(ctx context.Context,
+	companies []client.CompanyTicker,
+	fn func(context.Context, client.CompanyTicker),
+) {
+	startIdx := slices.IndexFunc(companies,
+		func(c client.CompanyTicker) bool { return !self.loadedCompany(c.CIK) })
+	if startIdx < 0 {
+		startIdx = 0
+	} else if startIdx > 0 {
+		self.log(ctx).Info("skip loaded companies", slog.Int("skipped", startIdx))
+	}
+
+	for i := startIdx; i < len(companies); i++ {
+		if ctx.Err() != nil {
+			return
+		}
+		l := self.log(ctx).With(slog.String("progress", fmt.Sprintf("%v/%v", i+1,
+			len(companies))))
+		fn(ContextWithLogger(ctx, l), companies[i])
+	}
+}
+
+func (self *Upload) loadedCompany(cik uint32) bool {
+	_, ok := self.lastFiled[cik]
+	return ok
 }
 
 func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
@@ -280,7 +313,7 @@ func (self *Upload) retryFunc(ctx context.Context, max int,
 
 func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 ) (uint32, error) {
-	factKey := strings.Join([]string{tax, name}, ":")
+	factKey := self.makeFactKey(tax, name)
 	labelHash := xxhash.Sum64String(label)
 	descrHash := xxhash.Sum64String(descr)
 
@@ -293,7 +326,7 @@ func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 	}
 
 	if fact, ok := self.knownFacts.Fact(factKey); ok {
-		return fact.Id, fact.AddLabel(ctx, labelHash, descrHash, func() error {
+		return fact.Id, fact.AddLabel(labelHash, descrHash, func() error {
 			return addLabel(fact.Id)
 		})
 	}

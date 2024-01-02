@@ -18,6 +18,12 @@ type facts struct {
 	mu         sync.RWMutex
 }
 
+func (self *facts) Len() int {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	return len(self.knownFacts)
+}
+
 func (self *facts) Fact(key string) (fact *knownFact, ok bool) {
 	self.mu.RLock()
 	defer self.mu.RUnlock()
@@ -49,6 +55,17 @@ func (self *facts) Create(key string, labelHash, descrHash uint64,
 	return v.(*knownFact), nil
 }
 
+func (self *facts) Preload(factId uint32, key string,
+	labelHash, descrHash uint64,
+) bool {
+	if fact, ok := self.knownFacts[key]; ok {
+		fact.AddMoreLabel(labelHash, descrHash)
+		return false
+	}
+	self.knownFacts[key] = newKnownFact(factId, labelHash, descrHash)
+	return true
+}
+
 // --------------------------------------------------
 
 func newKnownFact(id uint32, labelHash, descrHash uint64) *knownFact {
@@ -68,7 +85,7 @@ type knownFact struct {
 	mu         sync.Mutex
 }
 
-func (self *knownFact) AddLabel(ctx context.Context, labelHash, descrHash uint64,
+func (self *knownFact) AddLabel(labelHash, descrHash uint64,
 	callback func() error,
 ) error {
 	if self.LabelHash == labelHash && self.DescrHash == descrHash {
@@ -90,6 +107,11 @@ func (self *knownFact) AddLabel(ctx context.Context, labelHash, descrHash uint64
 		return fmt.Errorf("callback: %w", err)
 	}
 
+	self.AddMoreLabel(labelHash, descrHash)
+	return nil
+}
+
+func (self *knownFact) AddMoreLabel(labelHash, descrHash uint64) {
 	if self.moreLabels == nil {
 		self.moreLabels = map[uint64]map[uint64]struct{}{
 			labelHash: {descrHash: {}},
@@ -99,7 +121,6 @@ func (self *knownFact) AddLabel(ctx context.Context, labelHash, descrHash uint64
 	} else {
 		self.moreLabels[labelHash][descrHash] = struct{}{}
 	}
-	return nil
 }
 
 // --------------------------------------------------

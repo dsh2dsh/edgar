@@ -50,3 +50,12 @@ func (self *FactUnit) NamedArgs() pgx.NamedArgs {
 		"frame":      self.Frame,
 	}
 }
+
+type FactLabels struct {
+	FactId    uint32 `db:"fact_id"`
+	FactTax   string `db:"fact_tax"`
+	FactName  string `db:"fact_name"`
+	LabelId   uint32 `db:"label_id"`
+	LabelHash uint64 `db:"xxhash1"`
+	DescrHash uint64 `db:"xxhash2"`
+}
