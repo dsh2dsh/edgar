@@ -32,6 +32,8 @@ const (
 	//
 	// Note that our current maximum access rate is 10 requests per second.
 	limitRate = 10
+
+	httpTimeout = 5 // seconds
 )
 
 // Doer performs HTTP requests.
@@ -73,7 +75,7 @@ func (self *Client) applyOptions(opts ...ClientOption) *Client {
 	}
 
 	if self.client == nil {
-		self.client = &http.Client{Timeout: 5 * time.Second}
+		self.client = &http.Client{Timeout: httpTimeout * time.Second}
 	}
 
 	if self.limiter == nil {
