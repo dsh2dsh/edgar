@@ -638,3 +638,40 @@ func TestRepo_FactLabels_error(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	assert.Nil(t, factLabels)
 }
+
+func (self *RepoTestSuite) TestRepo_Units() {
+	ctx := context.Background()
+	unitId := self.addTestUnit(ctx)
+
+	units, err := self.repo.Units(ctx)
+	self.Require().NoError(err)
+	self.Len(units, 1)
+	self.Equal(map[uint32]string{unitId: unitName}, units)
+
+	m := mocks.NewMockPostgreser(self.T())
+	m.EXPECT().Query(ctx, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err
+		})
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+
+	units, err = self.repo.Units(ctx)
+	self.Require().Error(err)
+	self.Nil(units)
+}
+
+func TestRepo_Units_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().Query(ctx, mock.Anything).Return(nil, wantErr).Once()
+
+	units, err := repo.Units(ctx)
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, units)
+}

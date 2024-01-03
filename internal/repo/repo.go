@@ -203,3 +203,26 @@ SELECT facts.id AS fact_id, fact_tax, fact_name,
 
 	return facts, nil
 }
+
+func (self *Repo) Units(ctx context.Context) (map[uint32]string, error) {
+	rows, err := self.db.Query(ctx, `SELECT id, unit_name FROM units`)
+	if err != nil {
+		return nil, fmt.Errorf("repo.Units: %w", err)
+	}
+
+	type unitItem struct {
+		Id       uint32 `db:"id"`
+		UnitName string `db:"unit_name"`
+	}
+
+	unitItems, err := pgx.CollectRows(rows, pgx.RowToStructByName[unitItem])
+	if err != nil {
+		return nil, fmt.Errorf("repo.FactLabels: %w", err)
+	}
+
+	units := make(map[uint32]string, len(unitItems))
+	for _, item := range unitItems {
+		units[item.Id] = item.UnitName
+	}
+	return units, nil
+}
