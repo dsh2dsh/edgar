@@ -33,7 +33,7 @@ const (
 	// Note that our current maximum access rate is 10 requests per second.
 	limitRate = 10
 
-	httpTimeout = 5 // seconds
+	httpTimeout = 30 // seconds
 )
 
 // Doer performs HTTP requests.
