@@ -166,7 +166,7 @@ func (self *factUnits) createUnit(ctx context.Context, name string,
 
 		self.mu.Lock()
 		defer self.mu.Unlock()
-		self.units[name] = id
+		self.Preload(id, name)
 		return id, nil
 	})
 
@@ -174,4 +174,8 @@ func (self *factUnits) createUnit(ctx context.Context, name string,
 		return 0, err //nolint:wrapcheck // wrapped inside genUnitId
 	}
 	return v.(uint32), nil
+}
+
+func (self *factUnits) Preload(id uint32, name string) {
+	self.units[name] = id
 }

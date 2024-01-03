@@ -18,6 +18,8 @@ import (
 	"github.com/dsh2dsh/edgar/internal/repo"
 )
 
+const retryNum = 2 // how many times repeat API call after 504
+
 func NewUpload(edgar *client.Client, repo Repo) *Upload {
 	return &Upload{
 		edgar: edgar,
@@ -41,6 +43,7 @@ type Repo interface {
 		next func(i int) (repo.FactUnit, error)) error
 	LastFiled(ctx context.Context) (map[uint32]time.Time, error)
 	FactLabels(ctx context.Context) ([]repo.FactLabels, error)
+	Units(ctx context.Context) (map[uint32]string, error)
 }
 
 type Upload struct {
@@ -77,6 +80,8 @@ func (self *Upload) log(ctx context.Context) *slog.Logger {
 func (self *Upload) Upload() error {
 	ctx := context.Background()
 	if err := self.preloadFacts(ctx); err != nil {
+		return err
+	} else if err := self.preloadUnits(ctx); err != nil {
 		return err
 	}
 
@@ -121,6 +126,20 @@ func (self *Upload) preloadFacts(ctx context.Context) error {
 	}
 	slog.Info("preloaded facts and labels",
 		slog.Int("len", self.knownFacts.Len()), slog.Int("extra", extraLabelsCnt))
+	return nil
+}
+
+func (self *Upload) preloadUnits(ctx context.Context) error {
+	slog.Info("preload units")
+	units, err := self.repo.Units(ctx)
+	if err != nil {
+		return fmt.Errorf("preload units: %w", err)
+	}
+
+	for id, name := range units {
+		self.knownUnits.Preload(id, name)
+	}
+	slog.Info("preloaded units", slog.Int("len", len(units)))
 	return nil
 }
 
@@ -210,10 +229,6 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
 		return nil
 	}
 
-	if true { // TODO: remove
-		return nil
-	}
-
 	for taxName, facts := range companyFacts {
 		for factName, fact := range facts {
 			factId, err := self.addFact(ctx, taxName, factName, fact.Label,
@@ -239,7 +254,7 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
 
 func (self *Upload) companyFacts(ctx context.Context, cik uint32, title string,
 ) (map[string]map[string]client.CompanyFact, error) {
-	facts, err := self.retryCompanyFacts(ctx, 2, cik)
+	facts, err := self.retryCompanyFacts(ctx, retryNum, cik)
 	if err != nil {
 		var s *client.UnexpectedStatusError
 		if errors.As(err, &s) && s.StatusCode() == http.StatusNotFound {
