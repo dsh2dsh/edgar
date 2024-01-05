@@ -79,9 +79,7 @@ func (self *Upload) log(ctx context.Context) *slog.Logger {
 
 func (self *Upload) Upload() error {
 	ctx := context.Background()
-	if err := self.preloadFacts(ctx); err != nil {
-		return err
-	} else if err := self.preloadUnits(ctx); err != nil {
+	if err := self.preloadArtifacts(ctx); err != nil {
 		return err
 	}
 
@@ -103,6 +101,15 @@ func (self *Upload) Upload() error {
 
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("upload facts: %w", err)
+	}
+	return nil
+}
+
+func (self *Upload) preloadArtifacts(ctx context.Context) error {
+	if err := self.preloadFacts(ctx); err != nil {
+		return err
+	} else if err := self.preloadUnits(ctx); err != nil {
+		return err
 	}
 	return nil
 }
