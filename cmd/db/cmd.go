@@ -51,28 +51,51 @@ and initialize it:
 		Use:   "upload",
 		Short: "Fetch all companies and their facts from EDGAR API",
 		Run: func(cmd *cobra.Command, args []string) {
-			connURL, err := connString()
-			cobra.CheckErr(err)
+			cobra.CheckErr(withUpload(func(u *Upload) error { return u.Upload() }))
+		},
+	}
 
-			ctx := context.Background()
-			db, err := pgxpool.New(ctx, connURL)
-			cobra.CheckErr(err)
-			defer db.Close()
-			cobra.CheckErr(db.Ping(ctx))
-
-			edgar, err := common.NewClient()
-			cobra.CheckErr(err)
-
-			uploader := NewUpload(edgar, repo.New(db)).
-				WithLogger(slog.Default()).WithProcsLimit(uploadProcs)
-			cobra.CheckErr(uploader.Upload())
+	updateCmd = cobra.Command{
+		Use:   "update",
+		Short: "Fetch new facts for all known companies from EDGAR API",
+		Run: func(cmd *cobra.Command, args []string) {
+			cobra.CheckErr(withUpload(func(u *Upload) error { return u.Update() }))
 		},
 	}
 )
 
+//nolint:wrapcheck // we'll pass error as is to cobra.CheckErr()
+func withUpload(fn func(u *Upload) error) error {
+	connURL, err := connString()
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, connURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if err := db.Ping(ctx); err != nil {
+		return err
+	}
+
+	edgar, err := common.NewClient()
+	if err != nil {
+		return err
+	}
+
+	uploader := NewUpload(edgar, repo.New(db)).
+		WithLogger(slog.Default()).WithProcsLimit(uploadProcs)
+	return fn(uploader)
+}
+
 func init() {
 	Cmd.AddCommand(&initCmd)
 	Cmd.AddCommand(&uploadCmd)
+	Cmd.AddCommand(&updateCmd)
 }
 
 func connString() (string, error) {
