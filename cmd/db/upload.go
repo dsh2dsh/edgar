@@ -236,26 +236,10 @@ func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,
 		return nil
 	}
 
-	for taxName, facts := range companyFacts {
-		for factName, fact := range facts {
-			factId, err := self.addFact(ctx, taxName, factName, fact.Label,
-				fact.Description)
-			if err != nil {
-				return fmt.Errorf("processCompanyFacts: company CIK=%v: %w", cik, err)
-			}
-			for unitName, factUnits := range fact.Units {
-				unitId, err := self.addUnit(ctx, unitName)
-				if err != nil {
-					return err
-				}
-				err = self.addFactUnits(ctx, cik, factId, unitId, factUnits)
-				if err != nil {
-					return err
-				}
-			}
-		}
+	err = self.iterateCompanyFacts(ctx, cik, companyFacts, self.addFactUnits)
+	if err != nil {
+		return fmt.Errorf("processCompanyFacts: %w", err)
 	}
-
 	return nil
 }
 
@@ -331,6 +315,33 @@ func (self *Upload) retryFunc(ctx context.Context, max int,
 		}
 	}
 	return false, nil
+}
+
+func (self *Upload) iterateCompanyFacts(ctx context.Context, cik uint32,
+	companyFacts map[string]map[string]client.CompanyFact,
+	fn func(ctx context.Context, cik, factId, unitId uint32,
+		factUnits []client.FactUnit) error,
+) error {
+	for taxName, facts := range companyFacts {
+		for factName, fact := range facts {
+			factId, err := self.addFact(ctx, taxName, factName, fact.Label,
+				fact.Description)
+			if err != nil {
+				return fmt.Errorf("iterateCompanyFacts: company CIK=%v: %w", cik, err)
+			}
+			for unitName, factUnits := range fact.Units {
+				unitId, err := self.addUnit(ctx, unitName)
+				if err != nil {
+					return err
+				}
+				err = fn(ctx, cik, factId, unitId, factUnits)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
