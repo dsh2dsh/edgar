@@ -111,6 +111,15 @@ func (self *Upload) preloadArtifacts(ctx context.Context) error {
 	} else if err := self.preloadUnits(ctx); err != nil {
 		return err
 	}
+
+	self.log(ctx).Info("preload last filed companies")
+	if lastFiled, err := self.repo.LastFiled(ctx); err != nil {
+		return fmt.Errorf("preload last filed: %w", err)
+	} else {
+		self.lastFiled = lastFiled
+	}
+	self.log(ctx).Info("preloaded last filed companies",
+		slog.Int("len", len(self.lastFiled)))
 	return nil
 }
 
@@ -151,15 +160,6 @@ func (self *Upload) preloadUnits(ctx context.Context) error {
 }
 
 func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, error) {
-	self.log(ctx).Info("preload last filed companies")
-	if lastFiled, err := self.repo.LastFiled(ctx); err != nil {
-		return nil, fmt.Errorf("preload last filed: %w", err)
-	} else {
-		self.lastFiled = lastFiled
-	}
-	self.log(ctx).Info("preloaded last filed companies",
-		slog.Int("len", len(self.lastFiled)))
-
 	self.log(ctx).Info("fetch company tickers")
 	companies, err := self.edgar.CompanyTickers(ctx)
 	if err != nil {
