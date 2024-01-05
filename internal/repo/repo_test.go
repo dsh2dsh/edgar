@@ -675,3 +675,76 @@ func TestRepo_Units_error(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	assert.Nil(t, units)
 }
+
+func (self *RepoTestSuite) TestRepo_FiledCounts() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	unitId := self.addTestUnit(ctx)
+
+	fullFact := FactUnit{
+		CIK:    appleCIK,
+		FactId: factId,
+		UnitId: unitId,
+		End:    time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC),
+		Val:    5520000000,
+		Accn:   "0001193125-09-153165",
+		FY:     2009,
+		FP:     "Q3",
+		Form:   "10-Q",
+		Filed:  time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+	}
+
+	filed := []time.Time{
+		time.Date(2009, 7, 4, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 18, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC),
+		time.Date(2009, 7, 4, 0, 0, 0, 0, time.UTC),
+	}
+	facts := make([]FactUnit, len(filed))
+	for i := range filed {
+		facts[i] = fullFact
+		facts[i].Filed = filed[i]
+	}
+
+	self.Require().NoError(self.repo.CopyFactUnits(ctx, len(facts),
+		func(i int) (FactUnit, error) { return facts[i], nil }))
+
+	counts, err := self.repo.FiledCounts(ctx, appleCIK)
+	self.Require().NoError(err)
+
+	wantCounts := map[time.Time]uint32{
+		time.Date(2009, 7, 4, 0, 0, 0, 0, time.UTC):  2,
+		time.Date(2009, 7, 18, 0, 0, 0, 0, time.UTC): 1,
+		time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC): 2,
+	}
+	self.Equal(wantCounts, counts)
+
+	m := mocks.NewMockPostgreser(self.T())
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, "SELECT 'not SERIAL'")
+			return rows, err
+		})
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+
+	counts, err = self.repo.FiledCounts(ctx, appleCIK)
+	self.Require().Error(err)
+	self.Nil(counts)
+}
+
+func TestRepo_FiledCounts_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().Query(ctx, mock.Anything, mock.Anything).Return(nil, wantErr).Once()
+
+	counts, err := repo.FiledCounts(ctx, appleCIK)
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, counts)
+}

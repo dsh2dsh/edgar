@@ -226,3 +226,30 @@ func (self *Repo) Units(ctx context.Context) (map[uint32]string, error) {
 	}
 	return units, nil
 }
+
+func (self *Repo) FiledCounts(ctx context.Context, cik uint32,
+) (map[time.Time]uint32, error) {
+	rows, err := self.db.Query(ctx, `
+SELECT filed, COUNT(*) AS facts FROM fact_units
+  WHERE company_cik = $1
+  GROUP BY company_cik, filed`, cik)
+	if err != nil {
+		return nil, fmt.Errorf("repo.FiledForms: %w", err)
+	}
+
+	type filedCount struct {
+		Filed time.Time `db:"filed"`
+		Facts uint32    `db:"facts"`
+	}
+
+	filedCounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[filedCount])
+	if err != nil {
+		return nil, fmt.Errorf("repo.FiledCounts: %w", err)
+	}
+
+	counts := make(map[time.Time]uint32, len(filedCounts))
+	for _, item := range filedCounts {
+		counts[item.Filed] = item.Facts
+	}
+	return counts, nil
+}
