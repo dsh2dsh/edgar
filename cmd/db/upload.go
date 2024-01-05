@@ -115,7 +115,7 @@ func (self *Upload) preloadArtifacts(ctx context.Context) error {
 }
 
 func (self *Upload) preloadFacts(ctx context.Context) error {
-	slog.Info("preload facts and labels")
+	self.log(ctx).Info("preload facts and labels")
 	factLabels, err := self.repo.FactLabels(ctx)
 	if err != nil {
 		return fmt.Errorf("preload facts and labels: %w", err)
@@ -131,13 +131,13 @@ func (self *Upload) preloadFacts(ctx context.Context) error {
 			extraLabelsCnt++
 		}
 	}
-	slog.Info("preloaded facts and labels",
+	self.log(ctx).Info("preloaded facts and labels",
 		slog.Int("len", self.knownFacts.Len()), slog.Int("extra", extraLabelsCnt))
 	return nil
 }
 
 func (self *Upload) preloadUnits(ctx context.Context) error {
-	slog.Info("preload units")
+	self.log(ctx).Info("preload units")
 	units, err := self.repo.Units(ctx)
 	if err != nil {
 		return fmt.Errorf("preload units: %w", err)
@@ -146,7 +146,7 @@ func (self *Upload) preloadUnits(ctx context.Context) error {
 	for id, name := range units {
 		self.knownUnits.Preload(id, name)
 	}
-	slog.Info("preloaded units", slog.Int("len", len(units)))
+	self.log(ctx).Info("preloaded units", slog.Int("len", len(units)))
 	return nil
 }
 
@@ -157,7 +157,7 @@ func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, erro
 	} else {
 		self.lastFiled = lastFiled
 	}
-	slog.Info("preloaded last filed companies",
+	self.log(ctx).Info("preloaded last filed companies",
 		slog.Int("len", len(self.lastFiled)))
 
 	self.log(ctx).Info("fetch company tickers")
