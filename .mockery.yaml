@@ -5,6 +5,9 @@ packages:
   io:
     interfaces:
       Reader:
+  github.com/jackc/pgx/v5:
+    interfaces:
+      Tx:
   github.com/dsh2dsh/edgar/client:
     interfaces:
       HttpRequestDoer:

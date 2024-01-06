@@ -10,6 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+var factUnitCols = [...]string{
+	"company_cik", "fact_id", "unit_id", "fact_start", "fact_end", "val", "accn",
+	"fy", "fp", "form", "filed", "frame",
+}
+
 func New(db Postgreser) *Repo {
 	return &Repo{db: db}
 }
@@ -23,6 +28,7 @@ type Postgreser interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string,
 		rowSrc pgx.CopyFromSource) (int64, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 func (self *Repo) AddCompany(ctx context.Context, cik uint32, name string,
@@ -136,11 +142,13 @@ INSERT INTO fact_units (company_cik,  fact_id,   unit_id,
 func (self *Repo) CopyFactUnits(ctx context.Context, length int,
 	next func(i int) (FactUnit, error),
 ) error {
-	colNames := []string{
-		"company_cik", "fact_id", "unit_id", "fact_start", "fact_end", "val",
-		"accn", "fy", "fp", "form", "filed", "frame",
-	}
-	n, err := self.db.CopyFrom(ctx, pgx.Identifier{"fact_units"}, colNames,
+	return self.copyFactUnits(ctx, self.db, length, next)
+}
+
+func (self *Repo) copyFactUnits(ctx context.Context, conn Postgreser,
+	length int, next func(i int) (FactUnit, error),
+) error {
+	n, err := conn.CopyFrom(ctx, pgx.Identifier{"fact_units"}, factUnitCols[:],
 		pgx.CopyFromSlice(length, func(i int) ([]any, error) {
 			fact, err := next(i)
 			if err != nil {
@@ -252,4 +260,21 @@ SELECT filed, COUNT(*) AS facts FROM fact_units
 		counts[item.Filed] = item.Facts
 	}
 	return counts, nil
+}
+
+func (self *Repo) ReplaceFactUnits(ctx context.Context, cik uint32,
+	lastFiled time.Time, length int, next func(i int) (FactUnit, error),
+) error {
+	err := pgx.BeginFunc(ctx, self.db, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+DELETE FROM fact_units WHERE company_cik = $1 AND filed >= $2`, cik, lastFiled)
+		if err != nil {
+			return err //nolint:wrapcheck // wrap it below
+		}
+		return self.copyFactUnits(ctx, tx, length, next)
+	})
+	if err != nil {
+		return fmt.Errorf("repo.ReplaceFactUnits: %w", err)
+	}
+	return nil
 }

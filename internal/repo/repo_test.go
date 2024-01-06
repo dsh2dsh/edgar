@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	pgxMocks "github.com/dsh2dsh/edgar/internal/mocks/pgx"
 	mocks "github.com/dsh2dsh/edgar/internal/mocks/repo"
 )
 
@@ -747,4 +748,82 @@ func TestRepo_FiledCounts_error(t *testing.T) {
 	counts, err := repo.FiledCounts(ctx, appleCIK)
 	require.ErrorIs(t, err, wantErr)
 	assert.Nil(t, counts)
+}
+
+func (self *RepoTestSuite) TestRepo_ReplaceFactUnits() {
+	ctx := context.Background()
+	self.addTestCompany(ctx)
+	factId := self.addTestFact(ctx)
+	unitId := self.addTestUnit(ctx)
+
+	lastFiled := time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC)
+	fullFact := FactUnit{
+		CIK:    appleCIK,
+		FactId: factId,
+		UnitId: unitId,
+		End:    time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC),
+		Val:    5520000000,
+		Accn:   "0001193125-09-153165",
+		FY:     2009,
+		FP:     "Q3",
+		Form:   "10-Q",
+		Filed:  lastFiled,
+	}
+	fullFact.WithStart(time.Date(2008, 9, 27, 0, 0, 0, 0, time.UTC)).
+		WithFrame("CY2008Q3I")
+
+	facts := []FactUnit{fullFact, fullFact, fullFact}
+	facts[0].Filed = time.Date(2009, 7, 21, 0, 0, 0, 0, time.UTC)
+	facts[len(facts)-1].Filed = time.Date(2009, 7, 23, 0, 0, 0, 0, time.UTC)
+	err := self.repo.CopyFactUnits(ctx, len(facts), func(i int) (FactUnit, error) {
+		return facts[i], nil
+	})
+	self.Require().NoError(err)
+
+	facts[0] = fullFact
+	facts[len(facts)-1] = fullFact
+	err = self.repo.ReplaceFactUnits(ctx, appleCIK, lastFiled,
+		len(facts), func(i int) (FactUnit, error) {
+			return facts[i], nil
+		})
+	self.Require().NoError(err)
+
+	rows, err := self.db.Query(ctx, `SELECT * FROM fact_units`)
+	self.Require().NoError(err)
+	gotFacts, err := pgx.CollectRows(rows, pgx.RowToStructByName[FactUnit])
+	self.Require().NoError(err)
+
+	wantFacts := []FactUnit{fullFact, fullFact, fullFact, fullFact}
+	wantFacts[0].Filed = time.Date(2009, 7, 21, 0, 0, 0, 0, time.UTC)
+	self.Equal(wantFacts, gotFacts)
+}
+
+func TestRepo_ReplaceFactUnits_error(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("test error")
+
+	db := mocks.NewMockPostgreser(t)
+	repo := New(db)
+
+	db.EXPECT().Begin(ctx).Return(nil, wantErr).Once()
+
+	facts := []FactUnit{{}, {}, {}}
+	lastFiled := time.Date(2009, 7, 22, 0, 0, 0, 0, time.UTC)
+	err := repo.ReplaceFactUnits(ctx, appleCIK, lastFiled,
+		len(facts), func(i int) (FactUnit, error) {
+			return facts[i], nil
+		})
+	require.ErrorIs(t, err, wantErr)
+
+	tx := pgxMocks.NewMockTx(t)
+	db.EXPECT().Begin(ctx).Return(tx, nil)
+	tx.EXPECT().Exec(ctx, mock.Anything, mock.Anything, mock.Anything).
+		Return(pgconn.NewCommandTag(""), wantErr)
+	tx.EXPECT().Rollback(ctx).Return(nil)
+
+	err = repo.ReplaceFactUnits(ctx, appleCIK, lastFiled,
+		len(facts), func(i int) (FactUnit, error) {
+			return facts[i], nil
+		})
+	require.ErrorIs(t, err, wantErr)
 }
