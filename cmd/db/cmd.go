@@ -50,6 +50,10 @@ and initialize it:
 	uploadCmd = cobra.Command{
 		Use:   "upload",
 		Short: "Fetch all companies and their facts from EDGAR API",
+		Long: `Fetch all companies and their facts from EDGAR API.
+
+Safe to use multiple times. This command fetches unknown companies only and
+ignores any company already stored in the db.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			cobra.CheckErr(withUpload(func(u *Upload) error { return u.Upload() }))
 		},
@@ -58,6 +62,10 @@ and initialize it:
 	updateCmd = cobra.Command{
 		Use:   "update",
 		Short: "Fetch new facts for all known companies from EDGAR API",
+		Long: `Fetch new facts for all known companies from EDGAR API.
+
+Use this command periodically to fetch new facts for known companies. It doesn't
+fetch facts for new companies, use upload instead.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			cobra.CheckErr(withUpload(func(u *Upload) error { return u.Update() }))
 		},
