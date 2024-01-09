@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dsh2dsh/edgar/cmd/db"
-	"github.com/dsh2dsh/edgar/cmd/download"
+	"github.com/dsh2dsh/edgar/cmd/index"
 )
 
 var rootCmd = cobra.Command{
@@ -20,7 +20,7 @@ var rootCmd = cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(&db.Cmd)
-	rootCmd.AddCommand(&download.Cmd)
+	rootCmd.AddCommand(&index.Cmd)
 }
 
 func Execute() {

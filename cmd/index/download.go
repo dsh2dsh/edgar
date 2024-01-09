@@ -1,4 +1,4 @@
-package download
+package index
 
 import (
 	"context"
@@ -8,53 +8,16 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dsh2dsh/edgar/client"
-	"github.com/dsh2dsh/edgar/cmd/internal/common"
 )
 
 const (
 	downloadProcs = 10 // Number of parallel downloads
 	edgarPath     = "edgar"
 )
-
-var (
-	edgarDataDir string
-
-	Cmd = cobra.Command{
-		Use:   "download index [files...]",
-		Short: "Recursively download files from EDGAR's /Archives/edgar/index",
-		Example: `
-  - Download all master.gz files from full-index:
-
-    $ edgar download full-index master.gz
-
-  - Download all files from daily-index:
-
-    $ edgar download daily-index`,
-		Args: cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			client, err := common.NewClient()
-			cobra.CheckErr(err)
-			d := NewDownload(client, newDownloadDir(edgarDataDir)).
-				WithProcsLimit(downloadProcs)
-			if len(args) > 1 {
-				d.WithNeedFiles(args[1:])
-			}
-			cobra.CheckErr(d.Download(filepath.Join(edgarPath, args[0])))
-		},
-	}
-)
-
-func init() {
-	Cmd.Flags().StringVarP(&edgarDataDir, "datadir", "d", "./",
-		"store EDGAR files into this directory")
-}
 
 func NewDownload(client *client.Client, st Storage) *Download {
 	return &Download{
@@ -192,51 +155,5 @@ func (self *Download) downloadFile(ctx context.Context, parentPath, fname,
 	if err = self.storage.Save(parentPath, fname, resp.Body); err != nil {
 		return fmt.Errorf("download error: %w", err)
 	}
-	return nil
-}
-
-// --------------------------------------------------
-
-func newDownloadDir(datadir string) *downloadDir {
-	return &downloadDir{datadir: datadir}
-}
-
-type downloadDir struct {
-	datadir string
-}
-
-func (self *downloadDir) Save(path, fname string, r io.Reader) error {
-	if err := self.makePath(path); err != nil {
-		return err
-	}
-
-	path = filepath.Join(self.datadir, path, fname)
-	w, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed create %q: %w", path, err)
-	}
-	defer w.Close()
-
-	_, err = io.Copy(w, r)
-	if err != nil {
-		return fmt.Errorf("failed write into %q: %w", path, err)
-	}
-
-	return nil
-}
-
-func (self *downloadDir) makePath(path string) error {
-	dir, err := os.Stat(self.datadir)
-	if err != nil {
-		return fmt.Errorf("makePath %q: %w", self.datadir, err)
-	} else if !dir.IsDir() {
-		return fmt.Errorf("makePath: %q not a directory", self.datadir)
-	}
-
-	path = filepath.Join(self.datadir, path)
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return fmt.Errorf("mkdir %q: %w", path, err)
-	}
-
 	return nil
 }
