@@ -1,9 +1,11 @@
 package db
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -12,15 +14,25 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dsh2dsh/edgar/client"
+	"github.com/dsh2dsh/edgar/client/index"
 	"github.com/dsh2dsh/edgar/internal/repo"
 )
 
+const (
+	indexPath   = "edgar/full-index"
+	masterIndex = "master.gz"
+)
+
 func (self *Upload) Update() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 	if err := self.preloadArtifacts(ctx); err != nil {
 		return err
+	} else if err := self.refreshLastFiled(ctx); err != nil {
+		return err
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	var progress atomic.Uint32
 	var wg sync.WaitGroup
@@ -39,6 +51,115 @@ func (self *Upload) Update() error {
 	}
 
 	return err
+}
+
+func (self *Upload) refreshLastFiled(ctx context.Context) error {
+	self.log(ctx).Info("looking for updated companies")
+	masterPath := filepath.Join(indexPath, masterIndex)
+	lastUpdated, fillings, err := self.indexFillings(ctx, masterPath)
+	if err != nil {
+		return err
+	}
+	self.log(ctx).Info("EDGAR last updated",
+		slog.String("at", lastUpdated.Format(time.DateOnly)),
+		slog.String("path", masterPath))
+
+	updateCompanies, err := self.hasUpdatesSince(ctx, lastUpdated,
+		self.hasUpdates(fillings, make(map[uint32]struct{}, len(self.lastFiled))))
+	if err != nil {
+		return err
+	}
+	self.log(ctx).Info("got updated companies", slog.Int("length",
+		len(updateCompanies)))
+
+	for cik := range self.lastFiled {
+		if _, ok := updateCompanies[cik]; !ok {
+			delete(self.lastFiled, cik)
+		}
+	}
+	return nil
+}
+
+func (self *Upload) indexFillings(ctx context.Context, path string,
+) (lastFiled time.Time, companies map[uint32]time.Time, err error) {
+	l := self.log(ctx).With(slog.String("path", path))
+	l.Info("fetch index file")
+
+	resp, err := self.edgar.GetArchiveFile(ctx, path)
+	if err != nil {
+		err = fmt.Errorf("failed fetch index file %q: %w", path, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	gz, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("failed gunzip %q: %w", path, err)
+		return
+	}
+
+	f := index.NewFile(gz)
+	if err = f.ReadHeaders(); err != nil {
+		err = fmt.Errorf("failed read headers from %q: %w", path, err)
+		return
+	}
+
+	companies, err = f.CompaniesLastFiled()
+	if err != nil {
+		err = fmt.Errorf("failed fetch companies from %q: %w", path, err)
+		return
+	}
+	lastFiled = f.LastFiled()
+	l.Info("fetched index file",
+		slog.String("lastFiled", lastFiled.Format(time.DateOnly)),
+		slog.Int("companies", len(companies)))
+	return
+}
+
+func (self *Upload) hasUpdates(fillings map[uint32]time.Time,
+	companies map[uint32]struct{},
+) map[uint32]struct{} {
+	for cik, filed := range fillings {
+		if knownFiled, ok := self.lastFiled[cik]; ok {
+			if !filed.Before(knownFiled) {
+				companies[cik] = struct{}{}
+			}
+		}
+	}
+	return companies
+}
+
+func (self *Upload) hasUpdatesSince(ctx context.Context, lastUpdated time.Time,
+	companies map[uint32]struct{},
+) (map[uint32]struct{}, error) {
+	lastQtr := client.NewQtr(lastUpdated)
+	mostRecent := self.mostRecentFiled()
+	self.log(ctx).Info("looking for updates", slog.String("since",
+		mostRecent.Format(time.DateOnly)))
+	qtr := client.NewQtr(mostRecent)
+
+	for path := qtr.Path(); ; path = qtr.Next() {
+		masterPath := filepath.Join(indexPath, path, masterIndex)
+		_, fillings, err := self.indexFillings(ctx, masterPath)
+		if err != nil {
+			return nil, err
+		}
+		companies = self.hasUpdates(fillings, companies)
+		if path == lastQtr.Path() {
+			break
+		}
+	}
+	return companies, nil
+}
+
+func (self *Upload) mostRecentFiled() time.Time {
+	var t time.Time
+	for _, lastFiled := range self.lastFiled {
+		if lastFiled.After(t) {
+			t = lastFiled
+		}
+	}
+	return t
 }
 
 func (self *Upload) logProgress(ctx context.Context, progress *atomic.Uint32) {
