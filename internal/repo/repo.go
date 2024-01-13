@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var factUnitCols = [...]string{
@@ -277,4 +278,30 @@ DELETE FROM fact_units WHERE company_cik = $1 AND filed >= $2`, cik, lastFiled)
 		return fmt.Errorf("repo.ReplaceFactUnits: %w", err)
 	}
 	return nil
+}
+
+func (self *Repo) AddLastUpdate(ctx context.Context, at time.Time) error {
+	_, err := self.db.Exec(ctx, `
+INSERT INTO last_updates (updated_at) VALUES($1)
+  ON CONFLICT DO NOTHING`, at)
+	if err != nil {
+		return fmt.Errorf("failed add last update at %v: %w", at, err)
+	}
+	return nil
+}
+
+func (self *Repo) LastUpdated(ctx context.Context,
+) (lastUpdated time.Time, err error) {
+	rows, err := self.db.Query(ctx,
+		`SELECT MAX(updated_at) AS last_updated_at FROM last_updates`)
+	if err != nil {
+		return lastUpdated, fmt.Errorf("quering last_updated_at: %w", err)
+	}
+	updatedAt, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[pgtype.Date])
+	if err != nil {
+		err = fmt.Errorf("collecting last_updated_at: %w", err)
+	} else if updatedAt.Valid {
+		lastUpdated = updatedAt.Time
+	}
+	return
 }

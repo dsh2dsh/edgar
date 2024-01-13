@@ -47,6 +47,8 @@ type Repo interface {
 	FiledCounts(ctx context.Context, cik uint32) (map[time.Time]uint32, error)
 	ReplaceFactUnits(ctx context.Context, cik uint32, lastFiled time.Time,
 		length int, next func(i int) (repo.FactUnit, error)) error
+	AddLastUpdate(ctx context.Context, at time.Time) error
+	LastUpdated(ctx context.Context) (lastUpdated time.Time, err error)
 }
 
 type Upload struct {

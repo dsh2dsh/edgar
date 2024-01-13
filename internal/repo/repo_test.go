@@ -115,6 +115,12 @@ CREATE TEMPORARY TABLE fact_units (
 
 CREATE INDEX ON fact_units (company_cik, filed);`)
 	self.Require().NoError(err)
+
+	_, err = self.db.Exec(ctx, `
+CREATE TEMPORARY TABLE last_updates (
+  updated_at DATE PRIMARY KEY
+)`)
+	self.Require().NoError(err)
 }
 
 func (self *RepoTestSuite) SetupTest() {
@@ -826,4 +832,48 @@ func TestRepo_ReplaceFactUnits_error(t *testing.T) {
 			return facts[i], nil
 		})
 	require.ErrorIs(t, err, wantErr)
+}
+
+func (self *RepoTestSuite) TestRepo_AddLastUpdate_LastUpdated() {
+	ctx := context.Background()
+	lastUpdated, err := self.repo.LastUpdated(ctx)
+	self.Require().NoError(err)
+	self.True(lastUpdated.IsZero())
+
+	now := time.Now().UTC()
+	self.Require().NoError(self.repo.AddLastUpdate(ctx, now))
+
+	lastUpdated, err = self.repo.LastUpdated(ctx)
+	self.Require().NoError(err)
+
+	y, month, d := now.Date()
+	wantNow := time.Date(y, month, d, 0, 0, 0, 0, time.UTC)
+	self.Equal(wantNow, lastUpdated)
+
+	self.Require().NoError(self.repo.AddLastUpdate(ctx, now))
+	rows, err := self.db.Query(ctx, `SELECT COUNT(*) FROM last_updates`)
+	self.Require().NoError(err)
+	cnt, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
+	self.Require().NoError(err)
+	self.Equal(1, cnt)
+
+	m := mocks.NewMockPostgreser(self.T())
+	wantErr := errors.New("test error")
+	m.EXPECT().Exec(ctx, mock.Anything, now).Return(pgconn.NewCommandTag(""),
+		wantErr).Once()
+	self.repo.db = m
+	self.T().Cleanup(func() { self.repo.db = self.db })
+	self.Require().ErrorIs(self.repo.AddLastUpdate(ctx, now), wantErr)
+
+	m.EXPECT().Query(ctx, mock.Anything).Return(nil, wantErr).Once()
+	_, err = self.repo.LastUpdated(ctx)
+	self.Require().ErrorIs(err, wantErr)
+
+	m.EXPECT().Query(ctx, mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			rows, err := self.db.Query(ctx, `SELECT 'not DATE'`)
+			return rows, err
+		})
+	_, err = self.repo.LastUpdated(ctx)
+	self.Require().Error(err)
 }

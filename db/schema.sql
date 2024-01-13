@@ -48,3 +48,8 @@ CREATE TABLE fact_units (
 );
 
 CREATE INDEX ON fact_units (company_cik, filed);
+
+DROP TABLE IF EXISTS last_updates;
+CREATE TABLE last_updates (
+  updated_at DATE PRIMARY KEY
+);

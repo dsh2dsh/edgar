@@ -25,49 +25,72 @@ const (
 
 func (self *Upload) Update() error {
 	ctx := context.Background()
-	if err := self.preloadArtifacts(ctx); err != nil {
-		return err
-	} else if err := self.refreshLastFiled(ctx); err != nil {
+	lastUpdated, err := self.preloadUpdateArtefacts(ctx)
+	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var progress atomic.Uint32
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		self.logProgress(ctx, &progress)
-	}()
-
-	self.log(ctx).Info("update all known companies")
-	err := self.updateKnownCompanies(ctx, &progress)
-	cancel()
-	wg.Wait()
-	if err == nil {
-		self.log(ctx).Info("update completed")
+	if err := self.updateWithProgress(ctx); err != nil {
+		return err
 	}
 
-	return err
+	if err := self.saveLastUpdated(ctx, lastUpdated); err != nil {
+		return err
+	}
+	self.log(ctx).Info("update completed")
+	return nil
 }
 
-func (self *Upload) refreshLastFiled(ctx context.Context) error {
-	self.log(ctx).Info("looking for updated companies")
+func (self *Upload) preloadUpdateArtefacts(ctx context.Context,
+) (lastUpdated time.Time, err error) {
+	if err = self.preloadArtifacts(ctx); err != nil {
+		return
+	}
+
+	if lastUpdated, err = self.repo.LastUpdated(ctx); err != nil {
+		err = fmt.Errorf("failed get last updated: %w", err)
+		return
+	} else if lastUpdated.IsZero() {
+		lastUpdated = self.mostRecentFiled()
+	}
+
+	lastUpdated, err = self.refreshLastFiled(ctx, lastUpdated)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (self *Upload) mostRecentFiled() time.Time {
+	var t time.Time
+	for _, lastFiled := range self.lastFiled {
+		if lastFiled.After(t) {
+			t = lastFiled
+		}
+	}
+	return t
+}
+
+func (self *Upload) refreshLastFiled(ctx context.Context, since time.Time,
+) (lastUpdated time.Time, err error) {
+	self.log(ctx).Info("looking for updated companies", slog.String("since",
+		since.Format(time.DateOnly)))
+
 	masterPath := filepath.Join(indexPath, masterIndex)
 	lastUpdated, fillings, err := self.indexFillings(ctx, masterPath)
 	if err != nil {
-		return err
+		return
 	}
-	self.log(ctx).Info("EDGAR last updated",
+
+	self.log(ctx).Info("EDGAR index last updated",
 		slog.String("at", lastUpdated.Format(time.DateOnly)),
 		slog.String("path", masterPath))
 
-	updateCompanies, err := self.hasUpdatesSince(ctx, lastUpdated,
-		self.hasUpdates(fillings, make(map[uint32]struct{}, len(self.lastFiled))))
+	updateCompanies, err := self.hasUpdatesUntil(ctx, since, lastUpdated,
+		self.hasUpdates(since, fillings, make(map[uint32]struct{},
+			len(self.lastFiled))))
 	if err != nil {
-		return err
+		return
 	}
 	self.log(ctx).Info("got updated companies", slog.Int("length",
 		len(updateCompanies)))
@@ -77,7 +100,7 @@ func (self *Upload) refreshLastFiled(ctx context.Context) error {
 			delete(self.lastFiled, cik)
 		}
 	}
-	return nil
+	return
 }
 
 func (self *Upload) indexFillings(ctx context.Context, path string,
@@ -116,12 +139,12 @@ func (self *Upload) indexFillings(ctx context.Context, path string,
 	return
 }
 
-func (self *Upload) hasUpdates(fillings map[uint32]time.Time,
+func (self *Upload) hasUpdates(since time.Time, fillings map[uint32]time.Time,
 	companies map[uint32]struct{},
 ) map[uint32]struct{} {
 	for cik, filed := range fillings {
-		if knownFiled, ok := self.lastFiled[cik]; ok {
-			if !filed.Before(knownFiled) {
+		if !filed.Before(since) {
+			if _, ok := self.lastFiled[cik]; ok {
 				companies[cik] = struct{}{}
 			}
 		}
@@ -129,14 +152,14 @@ func (self *Upload) hasUpdates(fillings map[uint32]time.Time,
 	return companies
 }
 
-func (self *Upload) hasUpdatesSince(ctx context.Context, lastUpdated time.Time,
-	companies map[uint32]struct{},
+func (self *Upload) hasUpdatesUntil(ctx context.Context, since time.Time,
+	lastUpdated time.Time, companies map[uint32]struct{},
 ) (map[uint32]struct{}, error) {
+	self.log(ctx).Info("checking index files for updates",
+		slog.String("since", since.Format(time.DateOnly)),
+		slog.String("until", lastUpdated.Format(time.DateOnly)))
+	qtr := client.NewQtr(since)
 	lastQtr := client.NewQtr(lastUpdated)
-	mostRecent := self.mostRecentFiled()
-	self.log(ctx).Info("looking for updates", slog.String("since",
-		mostRecent.Format(time.DateOnly)))
-	qtr := client.NewQtr(mostRecent)
 
 	for path := qtr.Path(); ; path = qtr.Next() {
 		masterPath := filepath.Join(indexPath, path, masterIndex)
@@ -144,7 +167,7 @@ func (self *Upload) hasUpdatesSince(ctx context.Context, lastUpdated time.Time,
 		if err != nil {
 			return nil, err
 		}
-		companies = self.hasUpdates(fillings, companies)
+		companies = self.hasUpdates(since, fillings, companies)
 		if path == lastQtr.Path() {
 			break
 		}
@@ -152,14 +175,28 @@ func (self *Upload) hasUpdatesSince(ctx context.Context, lastUpdated time.Time,
 	return companies, nil
 }
 
-func (self *Upload) mostRecentFiled() time.Time {
-	var t time.Time
-	for _, lastFiled := range self.lastFiled {
-		if lastFiled.After(t) {
-			t = lastFiled
-		}
+func (self *Upload) updateWithProgress(ctx context.Context) error {
+	if len(self.lastFiled) == 0 {
+		self.log(ctx).Info("nothing to update")
+		return nil
 	}
-	return t
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var progress atomic.Uint32
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		self.logProgress(ctx, &progress)
+	}()
+
+	self.log(ctx).Info("update all known companies")
+	err := self.updateKnownCompanies(ctx, &progress)
+	cancel()
+	wg.Wait()
+	return err
 }
 
 func (self *Upload) logProgress(ctx context.Context, progress *atomic.Uint32) {
@@ -315,4 +352,14 @@ func (self *Upload) freshRepoFacts(ctx context.Context, cik uint32,
 	})
 
 	return repoFacts, nil
+}
+
+func (self *Upload) saveLastUpdated(ctx context.Context, lastUpdated time.Time,
+) error {
+	self.log(ctx).Info("add last updated", slog.String("at",
+		lastUpdated.Format(time.DateOnly)))
+	if err := self.repo.AddLastUpdate(ctx, lastUpdated); err != nil {
+		return fmt.Errorf("failed add last updated: %w", err)
+	}
+	return nil
 }
