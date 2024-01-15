@@ -59,6 +59,7 @@ type Upload struct {
 	knownFacts facts
 	knownUnits factUnits
 	lastFiled  map[uint32]time.Time
+	unknown    []client.CompanyTicker
 
 	procs int
 }
@@ -88,25 +89,10 @@ func (self *Upload) Upload() error {
 		return err
 	}
 
-	companies, err := self.companies(ctx)
-	if err != nil {
-		return err
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(self.procs)
-
-	self.iterateCompanies(ctx, companies,
-		func(ctx context.Context, company client.CompanyTicker) {
-			cik, title := company.CIK, company.Title
-			l := self.log(ctx).With(slog.Uint64("CIK", uint64(cik)))
-			ctx = ContextWithLogger(ctx, l)
-			g.Go(func() error { return self.processCompanyFacts(ctx, cik, title) })
-		})
-
-	if err := g.Wait(); err != nil {
+	if err := self.uploadUnknownCompanies(ctx); err != nil {
 		return fmt.Errorf("upload facts: %w", err)
 	}
+	self.log(ctx).Info("upload completed")
 	return nil
 }
 
@@ -125,6 +111,12 @@ func (self *Upload) preloadArtifacts(ctx context.Context) error {
 	}
 	self.log(ctx).Info("preloaded last filed companies",
 		slog.Int("len", len(self.lastFiled)))
+
+	if companies, err := self.unknownCompanies(ctx); err != nil {
+		return err
+	} else {
+		self.unknown = companies
+	}
 	return nil
 }
 
@@ -162,6 +154,28 @@ func (self *Upload) preloadUnits(ctx context.Context) error {
 	}
 	self.log(ctx).Info("preloaded units", slog.Int("len", len(units)))
 	return nil
+}
+
+func (self *Upload) unknownCompanies(ctx context.Context,
+) ([]client.CompanyTicker, error) {
+	self.log(ctx).Info("looking for unknown companies")
+	companies, err := self.companies(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	unknownIdx := slices.IndexFunc(companies,
+		func(c client.CompanyTicker) bool { return !self.loadedCompany(c.CIK) })
+	if unknownIdx < 0 {
+		return nil, nil
+	} else if unknownIdx > 0 {
+		self.log(ctx).Info("skip loaded companies", slog.Int("skipped", unknownIdx))
+	}
+
+	unknownCompanies := companies[unknownIdx:]
+	self.log(ctx).Info("found unknown companies", slog.Int("length",
+		len(unknownCompanies)))
+	return unknownCompanies, nil
 }
 
 func (self *Upload) companies(ctx context.Context) ([]client.CompanyTicker, error) {
@@ -203,31 +217,29 @@ func (self *Upload) makeFactKey(tax, name string) string {
 	return strings.Join([]string{tax, name}, ":")
 }
 
-func (self *Upload) iterateCompanies(ctx context.Context,
-	companies []client.CompanyTicker,
-	fn func(context.Context, client.CompanyTicker),
-) {
-	startIdx := slices.IndexFunc(companies,
-		func(c client.CompanyTicker) bool { return !self.loadedCompany(c.CIK) })
-	if startIdx < 0 {
-		startIdx = 0
-	} else if startIdx > 0 {
-		self.log(ctx).Info("skip loaded companies", slog.Int("skipped", startIdx))
-	}
-
-	for i := startIdx; i < len(companies); i++ {
-		if ctx.Err() != nil {
-			return
-		}
-		l := self.log(ctx).With(slog.String("progress", fmt.Sprintf("%v/%v", i+1,
-			len(companies))))
-		fn(ContextWithLogger(ctx, l), companies[i])
-	}
-}
-
 func (self *Upload) loadedCompany(cik uint32) bool {
 	_, ok := self.lastFiled[cik]
 	return ok
+}
+
+func (self *Upload) uploadUnknownCompanies(ctx context.Context) error {
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(self.procs)
+
+	for i := 0; i < len(self.unknown); i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		company := &self.unknown[i]
+		cik, title := company.CIK, company.Title
+		l := self.log(ctx).With(
+			slog.String("progress", fmt.Sprintf("%v/%v", i+1, len(self.unknown))),
+			slog.Uint64("CIK", uint64(cik)))
+		g.Go(func() error {
+			return self.processCompanyFacts(ContextWithLogger(ctx, l), cik, title)
+		})
+	}
+	return g.Wait() //nolint:wrapcheck // returned not from external package
 }
 
 func (self *Upload) processCompanyFacts(ctx context.Context, cik uint32,

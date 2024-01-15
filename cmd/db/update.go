@@ -34,6 +34,14 @@ func (self *Upload) Update() error {
 		return err
 	}
 
+	if len(self.unknown) > 0 {
+		self.log(ctx).Info("upload new companies", slog.Int("length",
+			len(self.unknown)))
+		if err := self.uploadUnknownCompanies(ctx); err != nil {
+			return fmt.Errorf("upload new companies: %w", err)
+		}
+	}
+
 	if err := self.saveLastUpdated(ctx, lastUpdated); err != nil {
 		return err
 	}
@@ -95,11 +103,8 @@ func (self *Upload) refreshLastFiled(ctx context.Context, since time.Time,
 	self.log(ctx).Info("got updated companies", slog.Int("length",
 		len(updateCompanies)))
 
-	for cik := range self.lastFiled {
-		if _, ok := updateCompanies[cik]; !ok {
-			delete(self.lastFiled, cik)
-		}
-	}
+	self.purgeLastFiled(ctx, updateCompanies)
+	self.log(ctx).Info("got new companies", slog.Int("length", len(self.unknown)))
 	return
 }
 
@@ -144,9 +149,7 @@ func (self *Upload) hasUpdates(since time.Time, fillings map[uint32]time.Time,
 ) map[uint32]struct{} {
 	for cik, filed := range fillings {
 		if !filed.Before(since) {
-			if _, ok := self.lastFiled[cik]; ok {
-				companies[cik] = struct{}{}
-			}
+			companies[cik] = struct{}{}
 		}
 	}
 	return companies
@@ -173,6 +176,24 @@ func (self *Upload) hasUpdatesUntil(ctx context.Context, since time.Time,
 		}
 	}
 	return companies, nil
+}
+
+func (self *Upload) purgeLastFiled(ctx context.Context,
+	updateCompanies map[uint32]struct{},
+) {
+	for cik := range self.lastFiled {
+		if _, ok := updateCompanies[cik]; !ok {
+			delete(self.lastFiled, cik)
+		}
+	}
+
+	if len(self.unknown) > 0 {
+		self.unknown = slices.DeleteFunc(self.unknown,
+			func(c client.CompanyTicker) bool {
+				_, ok := updateCompanies[c.CIK]
+				return !ok
+			})
+	}
 }
 
 func (self *Upload) updateWithProgress(ctx context.Context) error {

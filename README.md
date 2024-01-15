@@ -20,7 +20,7 @@ $ go run github.com/dsh2dsh/edgar@latest
 
 ## Usage
 
-Before using this programm, you need postgresql instance. Create `.env` file
+Before using this programm, you need postgresql instance. Create an `.env` file
 with content like this:
 
 ```
@@ -44,12 +44,6 @@ Periodically fetch new facts:
 
 ```
 $ edgar db update
-```
-
-and from time to time fetch new companies:
-
-```
-$ edgar db upload
 ```
 
 ## How to test
