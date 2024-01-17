@@ -100,10 +100,11 @@ func (self *Upload) refreshLastFiled(ctx context.Context, since time.Time,
 	if err != nil {
 		return
 	}
-	self.log(ctx).Info("got updated companies", slog.Int("length",
-		len(updateCompanies)))
 
 	self.purgeLastFiled(ctx, updateCompanies)
+	self.log(ctx).Info("got updated companies",
+		slog.Int("length", len(updateCompanies)),
+		slog.Int("actual", len(self.lastFiled)))
 	self.log(ctx).Info("got new companies", slog.Int("length", len(self.unknown)))
 	return
 }
