@@ -85,7 +85,7 @@ func (self *File) readIndexHeader() error {
 		headers[h] = v
 	}
 	if len(headers) == 0 {
-		return fmt.Errorf("headers not found")
+		return errors.New("headers not found")
 	}
 	self.headers = headers
 	return nil

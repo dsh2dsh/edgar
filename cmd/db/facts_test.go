@@ -268,7 +268,7 @@ func TestKnownFact_AddLabel(t *testing.T) {
 					go func() {
 						close(sig)
 						err := fact.AddLabel(2, 3, callbackCalled(t, nil))
-						require.NoError(t, err)
+						assert.NoError(t, err)
 						close(done)
 					}()
 					<-sig
