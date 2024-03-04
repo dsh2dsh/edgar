@@ -6,7 +6,6 @@ linters:
     - asciicheck
     - bidichk
     - errorlint
-    - exportloopref
     - goconst
     - gocritic
     # - gofmt # we are using gofumpt instead
@@ -24,6 +23,12 @@ linters:
     - wrapcheck
 
 linters-settings:
+  goimports:
+    # A comma-separated list of prefixes, which, if set, checks import paths
+    # with the given prefixes are grouped after 3rd-party packages.
+    # Default: ""
+    local-prefixes: "github.com/dsh2dsh/edgar"
+
   nolintlint:
     # Enable to require an explanation of nonzero length after each nolint directive.
     # Default: false
