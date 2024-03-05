@@ -6,7 +6,7 @@ require (
 	github.com/caarlos0/env/v10 v10.0.0
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/dsh2dsh/expx-dotenv v1.3.2
-	github.com/jackc/pgx/v5 v5.5.3
+	github.com/jackc/pgx/v5 v5.5.4
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.6.0
