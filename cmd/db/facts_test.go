@@ -421,7 +421,7 @@ func TestFactUnits_Id(t *testing.T) {
 			name: "hit inside group",
 			assertCall: func(t *testing.T, facts *factUnits) (uint32, error) {
 				facts.units["USD"] = 1
-				return facts.createUnit(ctx, "USD", callbackNotCalled(t))
+				return facts.createUnit("USD", callbackNotCalled(t))
 			},
 			wantUnitId: 1,
 			wantUnits:  map[string]uint32{"USD": 1},

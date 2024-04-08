@@ -141,7 +141,7 @@ func (self *factUnits) Id(ctx context.Context, name string,
 	if unitId, ok := self.knownUnit(name); ok {
 		return unitId, nil
 	}
-	return self.createUnit(ctx, name, genUnitId)
+	return self.createUnit(name, genUnitId)
 }
 
 func (self *factUnits) knownUnit(name string) (id uint32, ok bool) {
@@ -151,8 +151,7 @@ func (self *factUnits) knownUnit(name string) (id uint32, ok bool) {
 	return
 }
 
-func (self *factUnits) createUnit(ctx context.Context, name string,
-	genUnitId func() (uint32, error),
+func (self *factUnits) createUnit(name string, genUnitId func() (uint32, error),
 ) (uint32, error) {
 	v, err, _ := self.group.Do(name, func() (interface{}, error) {
 		if unitId, ok := self.knownUnit(name); ok {

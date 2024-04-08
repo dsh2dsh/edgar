@@ -397,7 +397,6 @@ func (self *Upload) addFact(ctx context.Context, tax, name, label, descr string,
 
 func (self *Upload) addUnit(ctx context.Context, name string) (uint32, error) {
 	unitId, err := self.knownUnits.Id(ctx, name, func() (uint32, error) {
-		//nolint:wrapcheck // will wrap below
 		return self.repo.AddUnit(ctx, name)
 	})
 	if err != nil {

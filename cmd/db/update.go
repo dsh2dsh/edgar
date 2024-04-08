@@ -101,7 +101,7 @@ func (self *Upload) refreshLastFiled(ctx context.Context, since time.Time,
 		return
 	}
 
-	self.purgeLastFiled(ctx, updateCompanies)
+	self.purgeLastFiled(updateCompanies)
 	self.log(ctx).Info("got updated companies",
 		slog.Int("length", len(updateCompanies)),
 		slog.Int("actual", len(self.lastFiled)))
@@ -179,9 +179,7 @@ func (self *Upload) hasUpdatesUntil(ctx context.Context, since time.Time,
 	return companies, nil
 }
 
-func (self *Upload) purgeLastFiled(ctx context.Context,
-	updateCompanies map[uint32]struct{},
-) {
+func (self *Upload) purgeLastFiled(updateCompanies map[uint32]struct{}) {
 	for cik := range self.lastFiled {
 		if _, ok := updateCompanies[cik]; !ok {
 			delete(self.lastFiled, cik)
