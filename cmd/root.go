@@ -23,7 +23,8 @@ func init() {
 	rootCmd.AddCommand(&index.Cmd)
 }
 
-func Execute() {
+func Execute(version string) {
+	rootCmd.Version = version
 	cobra.CheckErr(rootCmd.Execute())
 }
 

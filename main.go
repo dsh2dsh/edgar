@@ -8,13 +8,16 @@ import (
 	"github.com/dsh2dsh/edgar/cmd/db"
 )
 
-//go:embed db/schema.sql
-var schemaSQL string
+var (
+	//go:embed db/schema.sql
+	schemaSQL string
+	version   string
+)
 
 func init() {
 	db.SchemaSQL = schemaSQL
 }
 
 func main() {
-	cmd.Execute()
+	cmd.Execute(version)
 }
